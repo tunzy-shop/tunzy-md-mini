@@ -40,7 +40,7 @@ app.get('/', (req, res) => {
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
             body {
-                font-family: Arial, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 background: #0b1421;
                 color: white;
                 margin: 0;
@@ -51,92 +51,169 @@ app.get('/', (req, res) => {
                 min-height: 100vh;
             }
             .container {
-                max-width: 400px;
+                max-width: 450px;
                 width: 100%;
                 background: #1e2a3a;
                 padding: 30px;
-                border-radius: 10px;
-                text-align: center;
+                border-radius: 16px;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             }
-            h1 { margin-bottom: 10px; color: #fff; }
-            .subtitle { color: #8899aa; margin-bottom: 30px; }
+            h1 { 
+                text-align: center; 
+                margin-bottom: 5px; 
+                color: #fff;
+                font-size: 28px;
+            }
+            .subtitle { 
+                text-align: center; 
+                color: #94a3b8; 
+                margin-bottom: 30px; 
+                font-size: 14px;
+            }
             .tab-buttons {
                 display: flex;
                 gap: 10px;
-                margin-bottom: 20px;
+                margin-bottom: 25px;
+                background: #0f1a2b;
+                padding: 5px;
+                border-radius: 12px;
             }
             .tab-btn {
                 flex: 1;
                 padding: 12px;
                 border: none;
-                border-radius: 5px;
-                background: #2d3f4f;
-                color: white;
+                border-radius: 8px;
+                background: transparent;
+                color: #94a3b8;
+                font-weight: 600;
                 cursor: pointer;
-                font-size: 16px;
+                transition: all 0.3s;
             }
-            .tab-btn.active { background: #2563eb; }
+            .tab-btn.active { 
+                background: #2563eb; 
+                color: white; 
+            }
             .tab-content { display: none; }
             .tab-content.active { display: block; }
+            
+            /* QR Code Styles */
             .qr-container {
                 background: white;
                 padding: 20px;
-                border-radius: 10px;
+                border-radius: 16px;
                 margin: 20px 0;
-                min-height: 250px;
                 display: flex;
                 justify-content: center;
                 align-items: center;
+                min-height: 280px;
             }
-            .qr-container img { max-width: 100%; border-radius: 5px; }
-            .qr-placeholder { color: #64748b; }
+            .qr-container img { 
+                max-width: 100%; 
+                height: auto;
+                border-radius: 8px;
+            }
+            .qr-placeholder { 
+                color: #64748b; 
+                text-align: center;
+            }
+            
+            /* Pairing Code Styles */
+            .input-group {
+                margin: 20px 0;
+            }
+            label {
+                display: block;
+                margin-bottom: 8px;
+                color: #94a3b8;
+                font-size: 14px;
+            }
             input {
                 width: 100%;
                 padding: 14px;
-                margin: 10px 0;
                 border: 2px solid #2d3f4f;
-                border-radius: 5px;
-                background: #0b1421;
+                border-radius: 12px;
+                background: #0f1a2b;
                 color: white;
                 font-size: 16px;
                 box-sizing: border-box;
+                transition: border-color 0.3s;
             }
-            input:focus { outline: none; border-color: #2563eb; }
+            input:focus {
+                outline: none;
+                border-color: #2563eb;
+            }
             button {
                 width: 100%;
                 padding: 14px;
                 border: none;
-                border-radius: 5px;
-                background: #2563eb;
+                border-radius: 12px;
+                background: linear-gradient(135deg, #2563eb, #3b82f6);
                 color: white;
                 font-size: 16px;
-                font-weight: bold;
+                font-weight: 600;
                 cursor: pointer;
+                transition: transform 0.2s;
                 margin: 10px 0;
             }
-            button:hover { background: #1d4ed8; }
+            button:hover {
+                transform: translateY(-2px);
+            }
+            button:disabled {
+                opacity: 0.5;
+                transform: none;
+                cursor: not-allowed;
+            }
             .code-box {
-                background: #0b1421;
-                padding: 20px;
-                border-radius: 5px;
-                font-size: 28px;
+                background: #0f1a2b;
+                padding: 25px;
+                border-radius: 16px;
+                font-size: 42px;
                 font-weight: bold;
-                letter-spacing: 8px;
+                letter-spacing: 10px;
+                text-align: center;
                 margin: 20px 0;
-                border: 2px solid #2563eb;
+                border: 3px solid #2563eb;
                 color: #60a5fa;
                 font-family: monospace;
+                word-break: break-all;
             }
-            .success-message {
-                background: #10b98120;
-                color: #10b981;
+            .code-label {
+                text-align: center;
+                color: #94a3b8;
+                margin: 10px 0;
+                font-size: 14px;
+            }
+            .instructions {
+                background: #2d3f4f;
                 padding: 15px;
-                border-radius: 5px;
+                border-radius: 12px;
                 margin: 20px 0;
-                border: 1px solid #10b981;
+                font-size: 14px;
+                color: #e2e8f0;
+                line-height: 1.6;
             }
-            .footer { margin-top: 30px; color: #64748b; font-size: 12px; }
+            .instructions ol {
+                margin-left: 20px;
+                margin-top: 10px;
+            }
+            .instructions li {
+                margin: 8px 0;
+            }
+            .footer { 
+                text-align: center; 
+                margin-top: 30px; 
+                color: #64748b; 
+                font-size: 12px; 
+            }
             .hidden { display: none; }
+            .error-message {
+                background: #ef444420;
+                color: #ef4444;
+                padding: 12px;
+                border-radius: 8px;
+                margin: 10px 0;
+                border: 1px solid #ef4444;
+            }
         </style>
     </head>
     <body>
@@ -152,22 +229,41 @@ app.get('/', (req, res) => {
             <!-- QR Code Tab -->
             <div id="qr-tab" class="tab-content active">
                 <div class="qr-container" id="qrDisplay">
-                    <div class="qr-placeholder">Waiting for QR code...</div>
+                    <div class="qr-placeholder">Scan QR code with WhatsApp</div>
+                </div>
+                <div style="text-align: center; color: #94a3b8; font-size: 14px;">
+                    Open WhatsApp > Menu > Linked Devices
                 </div>
             </div>
             
             <!-- Pairing Code Tab -->
             <div id="pair-tab" class="tab-content hidden">
-                <input type="text" id="phoneNumber" placeholder="e.g., 2349067345425">
-                <button onclick="requestPairing()" id="pairBtn">🔑 Generate Pairing Code</button>
+                <div class="input-group">
+                    <label>📞 Phone Number (with country code)</label>
+                    <input type="text" id="phoneNumber" placeholder="e.g., 2349067345425" value="2349067345425">
+                </div>
+                
+                <button onclick="requestPairing()" id="pairBtn">
+                    🔑 Generate 8-digit Code
+                </button>
                 
                 <div id="pairCodeContainer" class="hidden">
-                    <div style="margin: 20px 0 10px; color: #94a3b8;">Your 8-digit code:</div>
+                    <div class="code-label">Your 8-digit pairing code:</div>
                     <div class="code-box" id="pairCode"></div>
-                    <div class="success-message">
-                        ✅ Open WhatsApp > Linked Devices > Link with phone number
+                    
+                    <div class="instructions">
+                        <strong>📱 How to use:</strong>
+                        <ol>
+                            <li>Open WhatsApp on your phone</li>
+                            <li>Tap Menu (3 dots) or Settings</li>
+                            <li>Go to <strong>Linked Devices</strong></li>
+                            <li>Tap <strong>Link a Device</strong></li>
+                            <li>Enter this 8-digit code</li>
+                        </ol>
                     </div>
                 </div>
+                
+                <div id="errorMessage" class="error-message hidden"></div>
             </div>
             
             <div class="footer">TUNZY-MD-MINI © 2026 | Owner: TUNZY SHOP</div>
@@ -188,15 +284,24 @@ app.get('/', (req, res) => {
             }
             
             async function requestPairing() {
-                const phone = document.getElementById('phoneNumber').value;
+                const phone = document.getElementById('phoneNumber').value.trim();
                 if (!phone) {
-                    alert('Please enter your phone number with country code');
+                    showError('Please enter your phone number');
+                    return;
+                }
+                
+                // Validate phone number
+                if (!phone.match(/^\\d+$/)) {
+                    showError('Phone number should contain only digits');
                     return;
                 }
                 
                 const btn = document.getElementById('pairBtn');
                 btn.disabled = true;
-                btn.textContent = '⏳ Generating...';
+                btn.textContent = '⏳ Generating Code...';
+                
+                // Hide any previous error
+                document.getElementById('errorMessage').classList.add('hidden');
                 
                 try {
                     const res = await fetch('/request-pairing', {
@@ -208,42 +313,69 @@ app.get('/', (req, res) => {
                     const data = await res.json();
                     
                     if (data.success) {
-                        // Show message that code is being generated
+                        // Show waiting message
                         document.getElementById('pairCodeContainer').classList.remove('hidden');
-                        document.getElementById('pairCode').textContent = '⏳ Generating...';
+                        document.getElementById('pairCode').textContent = '⏳';
                         
                         // Start checking for the code
-                        checkForPairingCode();
+                        checkForCode();
+                    } else {
+                        showError('Failed to request code');
                     }
                 } catch (error) {
-                    alert('Error requesting code');
+                    showError('Network error. Please try again.');
                 }
                 
                 btn.disabled = false;
-                btn.textContent = '🔑 Generate Pairing Code';
+                btn.textContent = '🔑 Generate 8-digit Code';
             }
             
-            async function checkForPairingCode() {
+            function showError(message) {
+                const errorEl = document.getElementById('errorMessage');
+                errorEl.textContent = message;
+                errorEl.classList.remove('hidden');
+            }
+            
+            async function checkForCode() {
+                let attempts = 0;
+                const maxAttempts = 30; // Check for 60 seconds max
+                
                 const checkInterval = setInterval(async () => {
-                    const res = await fetch('/status');
-                    const data = await res.json();
+                    attempts++;
                     
-                    // Update QR if available
-                    if (data.qr) {
-                        document.getElementById('qrDisplay').innerHTML = \`<img src="\${data.qr}" alt="QR Code">\`;
-                    }
-                    
-                    // Update pairing code if available
-                    if (data.pairingCode) {
-                        document.getElementById('pairCodeContainer').classList.remove('hidden');
-                        document.getElementById('pairCode').textContent = data.pairingCode;
-                        clearInterval(checkInterval);
+                    try {
+                        const res = await fetch('/status');
+                        const data = await res.json();
+                        
+                        // Update QR if available
+                        if (data.qr) {
+                            document.getElementById('qrDisplay').innerHTML = \`<img src="\${data.qr}" alt="QR Code">\`;
+                        }
+                        
+                        // Update pairing code if available
+                        if (data.pairingCode) {
+                            document.getElementById('pairCodeContainer').classList.remove('hidden');
+                            document.getElementById('pairCode').textContent = data.pairingCode;
+                            clearInterval(checkInterval);
+                        } else if (attempts >= maxAttempts) {
+                            document.getElementById('pairCode').textContent = 'Timeout';
+                            showError('Code generation timed out. Please try again.');
+                            clearInterval(checkInterval);
+                        }
+                    } catch (error) {
+                        console.error('Status check failed');
                     }
                 }, 2000);
             }
             
             // Check status on load
-            checkForPairingCode();
+            setInterval(async () => {
+                const res = await fetch('/status');
+                const data = await res.json();
+                if (data.qr) {
+                    document.getElementById('qrDisplay').innerHTML = \`<img src="\${data.qr}" alt="QR Code">\`;
+                }
+            }, 2000);
         </script>
     </body>
     </html>
@@ -263,10 +395,11 @@ app.get('/admin', (req, res) => {
             .container { max-width: 600px; margin: 0 auto; }
             .card { background: #1e2a3a; padding: 20px; border-radius: 10px; margin: 20px 0; }
             button { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
-            .status { display: inline-block; padding: 5px 10px; border-radius: 5px; }
+            .status-badge { display: inline-block; padding: 5px 10px; border-radius: 5px; }
             .connected { background: #10b98120; color: #10b981; }
             .disconnected { background: #ef444420; color: #ef4444; }
             input { padding: 10px; width: 200px; margin: 10px 0; }
+            .code-display { font-family: monospace; font-size: 20px; letter-spacing: 2px; }
         </style>
     </head>
     <body>
@@ -293,10 +426,10 @@ app.get('/admin', (req, res) => {
                 document.getElementById('app').innerHTML = \`
                     <h1>Admin Dashboard</h1>
                     <div class="card">
-                        <h2>Bot Information</h2>
+                        <h2>Bot Status</h2>
                         <p><strong>Status:</strong> <span id="botStatus">Loading...</span></p>
                         <p><strong>Phone:</strong> <span id="phone">-</span></p>
-                        <p><strong>Pairing Code:</strong> <span id="code">-</span></p>
+                        <p><strong>Pairing Code:</strong> <span id="code" class="code-display">-</span></p>
                     </div>
                     <div class="card">
                         <h2>Controls</h2>
@@ -312,8 +445,8 @@ app.get('/admin', (req, res) => {
                 const res = await fetch('/status');
                 const data = await res.json();
                 document.getElementById('botStatus').innerHTML = data.connected ? 
-                    '<span class="status connected">Connected</span>' : 
-                    '<span class="status disconnected">Disconnected</span>';
+                    '<span class="status-badge connected">✅ Connected</span>' : 
+                    '<span class="status-badge disconnected">❌ Disconnected</span>';
                 document.getElementById('phone').textContent = data.phoneNumber || 'Not set';
                 document.getElementById('code').textContent = data.pairingCode || 'None';
             }
@@ -360,17 +493,27 @@ app.post('/request-pairing', (req, res) => {
     phoneNumber = req.body.phone;
     console.log('📱 Pairing requested for:', phoneNumber);
     
+    // Reset previous code
+    pairingCode = null;
+    
     // Trigger pairing code generation
     if (sock) {
         setTimeout(async () => {
             try {
-                const code = await sock.requestPairingCode(phoneNumber);
-                pairingCode = code;
-                console.log('✅ Pairing code generated:', code);
+                // Format phone number (remove any + or spaces)
+                const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+                console.log('🔑 Generating code for:', cleanNumber);
+                
+                const code = await sock.requestPairingCode(cleanNumber);
+                // Format code with space for better readability
+                pairingCode = code.match(/.{1,3}/g).join(' ');
+                console.log('✅ Pairing code generated:', pairingCode);
             } catch (e) {
                 console.log('❌ Pairing error:', e);
             }
         }, 2000);
+    } else {
+        console.log('❌ Socket not ready yet');
     }
     
     res.json({ success: true });
@@ -389,6 +532,7 @@ app.post('/admin/clear', async (req, res) => {
     qrCode = null;
     pairingCode = null;
     connected = false;
+    console.log('🗑️ Session cleared');
     res.json({ success: true });
 });
 
@@ -459,10 +603,11 @@ async function startBot() {
     if (phoneNumber && !connected) {
         setTimeout(async () => {
             try {
-                console.log('🔑 Generating pairing code for:', phoneNumber);
-                const code = await sock.requestPairingCode(phoneNumber);
-                pairingCode = code;
-                console.log('✅ Pairing code:', code);
+                const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+                console.log('🔑 Generating pairing code for:', cleanNumber);
+                const code = await sock.requestPairingCode(cleanNumber);
+                pairingCode = code.match(/.{1,3}/g).join(' ');
+                console.log('✅ Pairing code:', pairingCode);
             } catch (e) {
                 console.log('❌ Failed to generate pairing code:', e.message);
             }
