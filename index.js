@@ -12,11 +12,11 @@ const express = require('express');
 const session = require('express-session');
 
 // Global variables
-global.pairingCode = null;
-global.qrCode = null;
-global.connected = false;
-global.phoneNumber = null;
-global.maintenanceMode = false;
+let pairingCode = null;
+let qrCode = null;
+let connected = false;
+let phoneNumber = null;
+let sock = null;
 
 // Express server
 const app = express();
@@ -58,7 +58,7 @@ app.get('/', (req, res) => {
                 border-radius: 10px;
                 text-align: center;
             }
-            h1 { margin-bottom: 10px; }
+            h1 { margin-bottom: 10px; color: #fff; }
             .subtitle { color: #8899aa; margin-bottom: 30px; }
             .tab-buttons {
                 display: flex;
@@ -67,12 +67,13 @@ app.get('/', (req, res) => {
             }
             .tab-btn {
                 flex: 1;
-                padding: 10px;
+                padding: 12px;
                 border: none;
                 border-radius: 5px;
                 background: #2d3f4f;
                 color: white;
                 cursor: pointer;
+                font-size: 16px;
             }
             .tab-btn.active { background: #2563eb; }
             .tab-content { display: none; }
@@ -82,47 +83,59 @@ app.get('/', (req, res) => {
                 padding: 20px;
                 border-radius: 10px;
                 margin: 20px 0;
+                min-height: 250px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }
-            .qr-container img { max-width: 100%; }
+            .qr-container img { max-width: 100%; border-radius: 5px; }
+            .qr-placeholder { color: #64748b; }
             input {
                 width: 100%;
-                padding: 12px;
+                padding: 14px;
                 margin: 10px 0;
-                border: 1px solid #3d4f5f;
+                border: 2px solid #2d3f4f;
                 border-radius: 5px;
                 background: #0b1421;
                 color: white;
+                font-size: 16px;
                 box-sizing: border-box;
             }
+            input:focus { outline: none; border-color: #2563eb; }
             button {
                 width: 100%;
-                padding: 12px;
+                padding: 14px;
                 border: none;
                 border-radius: 5px;
                 background: #2563eb;
                 color: white;
+                font-size: 16px;
                 font-weight: bold;
                 cursor: pointer;
                 margin: 10px 0;
             }
+            button:hover { background: #1d4ed8; }
             .code-box {
                 background: #0b1421;
                 padding: 20px;
                 border-radius: 5px;
-                font-size: 24px;
+                font-size: 28px;
                 font-weight: bold;
-                letter-spacing: 5px;
+                letter-spacing: 8px;
                 margin: 20px 0;
                 border: 2px solid #2563eb;
+                color: #60a5fa;
+                font-family: monospace;
             }
-            .status {
-                padding: 10px;
+            .success-message {
+                background: #10b98120;
+                color: #10b981;
+                padding: 15px;
                 border-radius: 5px;
-                margin: 10px 0;
+                margin: 20px 0;
+                border: 1px solid #10b981;
             }
-            .status.connected { background: #10b98120; color: #10b981; border: 1px solid #10b981; }
-            .status.disconnected { background: #ef444420; color: #ef4444; border: 1px solid #ef4444; }
-            .footer { margin-top: 30px; color: #8899aa; font-size: 12px; }
+            .footer { margin-top: 30px; color: #64748b; font-size: 12px; }
             .hidden { display: none; }
         </style>
     </head>
@@ -132,24 +145,29 @@ app.get('/', (req, res) => {
             <div class="subtitle">Connect your WhatsApp bot</div>
             
             <div class="tab-buttons">
-                <button class="tab-btn active" onclick="showTab('qr')">QR Code</button>
-                <button class="tab-btn" onclick="showTab('pair')">Pairing Code</button>
+                <button class="tab-btn active" onclick="showTab('qr')">📱 QR Code</button>
+                <button class="tab-btn" onclick="showTab('pair')">🔢 Pairing Code</button>
             </div>
             
+            <!-- QR Code Tab -->
             <div id="qr-tab" class="tab-content active">
                 <div class="qr-container" id="qrDisplay">
-                    <div style="color: #8899aa;">Waiting for QR code...</div>
+                    <div class="qr-placeholder">Waiting for QR code...</div>
                 </div>
-                <div id="qrStatus" class="status disconnected">Status: Disconnected</div>
             </div>
             
+            <!-- Pairing Code Tab -->
             <div id="pair-tab" class="tab-content hidden">
-                <input type="text" id="phoneNumber" placeholder="Phone with country code">
-                <button onclick="requestPairing()">Get Pairing Code</button>
-                <div id="pairCodeDisplay" class="hidden">
+                <input type="text" id="phoneNumber" placeholder="e.g., 2349067345425">
+                <button onclick="requestPairing()" id="pairBtn">🔑 Generate Pairing Code</button>
+                
+                <div id="pairCodeContainer" class="hidden">
+                    <div style="margin: 20px 0 10px; color: #94a3b8;">Your 8-digit code:</div>
                     <div class="code-box" id="pairCode"></div>
+                    <div class="success-message">
+                        ✅ Open WhatsApp > Linked Devices > Link with phone number
+                    </div>
                 </div>
-                <div id="pairStatus" class="status disconnected">Status: Disconnected</div>
             </div>
             
             <div class="footer">TUNZY-MD-MINI © 2026 | Owner: TUNZY SHOP</div>
@@ -159,54 +177,73 @@ app.get('/', (req, res) => {
             function showTab(tab) {
                 document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
                 if (tab === 'qr') {
-                    document.querySelector('.tab-btn:first-child').classList.add('active');
+                    document.querySelectorAll('.tab-btn')[0].classList.add('active');
                     document.getElementById('qr-tab').classList.add('active');
                 } else {
-                    document.querySelector('.tab-btn:last-child').classList.add('active');
+                    document.querySelectorAll('.tab-btn')[1].classList.add('active');
                     document.getElementById('pair-tab').classList.add('active');
                 }
             }
             
             async function requestPairing() {
                 const phone = document.getElementById('phoneNumber').value;
-                if (!phone) return alert('Enter phone number');
-                
-                const btn = event.target;
-                btn.disabled = true;
-                btn.textContent = 'Requesting...';
-                
-                await fetch('/request-pairing', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone })
-                });
-                
-                btn.disabled = false;
-                btn.textContent = 'Get Pairing Code';
-            }
-            
-            async function checkStatus() {
-                const res = await fetch('/status');
-                const data = await res.json();
-                
-                if (data.qr) document.getElementById('qrDisplay').innerHTML = \`<img src="\${data.qr}">\`;
-                if (data.pairingCode) {
-                    document.getElementById('pairCodeDisplay').classList.remove('hidden');
-                    document.getElementById('pairCode').textContent = data.pairingCode;
+                if (!phone) {
+                    alert('Please enter your phone number with country code');
+                    return;
                 }
                 
-                const statusClass = data.connected ? 'connected' : 'disconnected';
-                const statusText = data.connected ? 'Connected' : 'Disconnected';
+                const btn = document.getElementById('pairBtn');
+                btn.disabled = true;
+                btn.textContent = '⏳ Generating...';
                 
-                document.getElementById('qrStatus').className = 'status ' + statusClass;
-                document.getElementById('qrStatus').textContent = 'Status: ' + statusText;
-                document.getElementById('pairStatus').className = 'status ' + statusClass;
-                document.getElementById('pairStatus').textContent = 'Status: ' + statusText;
+                try {
+                    const res = await fetch('/request-pairing', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone })
+                    });
+                    
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        // Show message that code is being generated
+                        document.getElementById('pairCodeContainer').classList.remove('hidden');
+                        document.getElementById('pairCode').textContent = '⏳ Generating...';
+                        
+                        // Start checking for the code
+                        checkForPairingCode();
+                    }
+                } catch (error) {
+                    alert('Error requesting code');
+                }
+                
+                btn.disabled = false;
+                btn.textContent = '🔑 Generate Pairing Code';
             }
             
-            setInterval(checkStatus, 2000);
-            checkStatus();
+            async function checkForPairingCode() {
+                const checkInterval = setInterval(async () => {
+                    const res = await fetch('/status');
+                    const data = await res.json();
+                    
+                    // Update QR if available
+                    if (data.qr) {
+                        document.getElementById('qrDisplay').innerHTML = \`<img src="\${data.qr}" alt="QR Code">\`;
+                    }
+                    
+                    // Update pairing code if available
+                    if (data.pairingCode) {
+                        document.getElementById('pairCodeContainer').classList.remove('hidden');
+                        document.getElementById('pairCode').textContent = data.pairingCode;
+                        clearInterval(checkInterval);
+                    }
+                }, 2000);
+            }
+            
+            // Check status on load
+            checkForPairingCode();
         </script>
     </body>
     </html>
@@ -256,16 +293,16 @@ app.get('/admin', (req, res) => {
                 document.getElementById('app').innerHTML = \`
                     <h1>Admin Dashboard</h1>
                     <div class="card">
-                        <h2>Bot Status</h2>
-                        <p>Status: <span class="status" id="botStatus">Loading...</span></p>
-                        <p>Phone: <span id="phone">-</span></p>
-                        <p>Pairing Code: <span id="code">-</span></p>
+                        <h2>Bot Information</h2>
+                        <p><strong>Status:</strong> <span id="botStatus">Loading...</span></p>
+                        <p><strong>Phone:</strong> <span id="phone">-</span></p>
+                        <p><strong>Pairing Code:</strong> <span id="code">-</span></p>
                     </div>
                     <div class="card">
                         <h2>Controls</h2>
-                        <button onclick="restart()">Restart</button>
-                        <button onclick="clearSession()">Clear Session</button>
-                        <button onclick="logout()">Logout</button>
+                        <button onclick="restart()">🔄 Restart Bot</button>
+                        <button onclick="clearSession()">🗑️ Clear Session</button>
+                        <button onclick="logout()">🚪 Logout</button>
                     </div>
                 \`;
                 loadStatus();
@@ -274,10 +311,11 @@ app.get('/admin', (req, res) => {
             async function loadStatus() {
                 const res = await fetch('/status');
                 const data = await res.json();
-                document.getElementById('botStatus').className = 'status ' + (data.connected ? 'connected' : 'disconnected');
-                document.getElementById('botStatus').textContent = data.connected ? 'Connected' : 'Disconnected';
-                document.getElementById('phone').textContent = data.phoneNumber || '-';
-                document.getElementById('code').textContent = data.pairingCode || '-';
+                document.getElementById('botStatus').innerHTML = data.connected ? 
+                    '<span class="status connected">Connected</span>' : 
+                    '<span class="status disconnected">Disconnected</span>';
+                document.getElementById('phone').textContent = data.phoneNumber || 'Not set';
+                document.getElementById('code').textContent = data.pairingCode || 'None';
             }
             
             async function restart() {
@@ -311,25 +349,46 @@ app.get('/admin', (req, res) => {
 // ========== API ENDPOINTS ==========
 app.get('/status', (req, res) => {
     res.json({
-        qr: global.qrCode,
-        pairingCode: global.pairingCode,
-        phoneNumber: global.phoneNumber,
-        connected: global.connected
+        qr: qrCode,
+        pairingCode: pairingCode,
+        phoneNumber: phoneNumber,
+        connected: connected
     });
 });
 
 app.post('/request-pairing', (req, res) => {
-    global.phoneNumber = req.body.phone;
+    phoneNumber = req.body.phone;
+    console.log('📱 Pairing requested for:', phoneNumber);
+    
+    // Trigger pairing code generation
+    if (sock) {
+        setTimeout(async () => {
+            try {
+                const code = await sock.requestPairingCode(phoneNumber);
+                pairingCode = code;
+                console.log('✅ Pairing code generated:', code);
+            } catch (e) {
+                console.log('❌ Pairing error:', e);
+            }
+        }, 2000);
+    }
+    
     res.json({ success: true });
 });
 
 app.post('/admin/restart', (req, res) => {
     res.json({ success: true });
-    setTimeout(() => process.exit(1), 1000);
+    setTimeout(() => {
+        console.log('🔄 Restarting bot...');
+        process.exit(1);
+    }, 1000);
 });
 
 app.post('/admin/clear', async (req, res) => {
     await fs.remove('session');
+    qrCode = null;
+    pairingCode = null;
+    connected = false;
     res.json({ success: true });
 });
 
@@ -338,7 +397,7 @@ async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('session');
     const { version } = await fetchLatestBaileysVersion();
 
-    const sock = makeWASocket({
+    sock = makeWASocket({
         version,
         auth: state,
         printQRInTerminal: false,
@@ -350,23 +409,28 @@ async function startBot() {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            global.qrCode = await QRCode.toDataURL(qr);
-            console.log('QR Code generated');
+            // Generate QR code image
+            qrCode = await QRCode.toDataURL(qr);
+            console.log('✅ QR Code generated');
         }
 
         if (connection === 'open') {
-            global.connected = true;
-            console.log('✅ Connected to WhatsApp');
+            connected = true;
+            console.log('✅ Bot connected to WhatsApp');
+            console.log('📱 Phone:', sock.user?.id);
         }
 
         if (connection === 'close') {
-            global.connected = false;
+            connected = false;
             const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+            
             if (reason === DisconnectReason.loggedOut) {
-                console.log('❌ Logged out');
+                console.log('❌ Logged out, clearing session');
                 await fs.remove('session');
+                qrCode = null;
+                pairingCode = null;
             } else {
-                console.log('🔄 Reconnecting...');
+                console.log('🔄 Connection closed, reconnecting...');
                 startBot();
             }
         }
@@ -374,7 +438,7 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // Simple message handler
+    // Handle messages
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.remoteJid === 'status@broadcast') return;
@@ -384,38 +448,38 @@ async function startBot() {
         if (body === '.ping') {
             await sock.sendMessage(m.key.remoteJid, { text: 'Pong! 🏓' });
         }
-        if (body === '.menu' || body === '.help') {
+        if (body === '.menu') {
             await sock.sendMessage(m.key.remoteJid, { 
-                text: 'TUNZY-MD-MINI\n\nCommands:\n.ping - Check bot\n.menu - This menu\n.alive - Bot status' 
+                text: '📱 TUNZY-MD-MINI\n\nCommands:\n.ping - Check bot\n.menu - This menu' 
             });
-        }
-        if (body === '.alive') {
-            await sock.sendMessage(m.key.remoteJid, { text: 'I am alive! ✅' });
         }
     });
 
-    // Handle pairing code requests
-    if (global.phoneNumber) {
+    // Generate pairing code if phone number exists
+    if (phoneNumber && !connected) {
         setTimeout(async () => {
             try {
-                const code = await sock.requestPairingCode(global.phoneNumber);
-                global.pairingCode = code;
-                console.log(`Pairing code for ${global.phoneNumber}: ${code}`);
+                console.log('🔑 Generating pairing code for:', phoneNumber);
+                const code = await sock.requestPairingCode(phoneNumber);
+                pairingCode = code;
+                console.log('✅ Pairing code:', code);
             } catch (e) {
-                console.log('Pairing error:', e);
+                console.log('❌ Failed to generate pairing code:', e.message);
             }
-        }, 5000);
+        }, 3000);
     }
-
-    return sock;
 }
 
-// ========== START EVERYTHING ==========
+// ========== START SERVER ==========
 app.listen(PORT, '0.0.0.0', () => {
     console.log('\n' + '='.repeat(50));
-    console.log('🌐 Server running on port', PORT);
+    console.log('🚀 TUNZY-MD-MINI Starting...');
+    console.log('='.repeat(50));
     console.log('📱 Main page: http://localhost:' + PORT);
     console.log('🔐 Admin: http://localhost:' + PORT + '/admin');
+    console.log('🔑 Admin password: ' + (process.env.ADMIN_PASSWORD || 'Tunzy@2026'));
     console.log('='.repeat(50) + '\n');
+    
+    // Start the bot
     startBot();
 });
