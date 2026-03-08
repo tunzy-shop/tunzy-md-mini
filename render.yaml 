@@ -1,0 +1,24 @@
+# render.yaml
+services:
+  - type: web
+    name: tunzy-md-mini
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: REDIS_URL
+        sync: false
+      - key: NEWSLETTER_JID
+        value: 120363422591784062@newsletter
+      - key: NEWSLETTER_NAME
+        value: TUNZY-TECH
+      - key: OWNER_NUMBER
+        sync: false
+      - key: PREFIX
+        value: .
+    disk:
+      name: session-data
+      mountPath: /opt/render/project/src/session-data
+      sizeGB: 1
