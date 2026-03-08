@@ -1,0 +1,23 @@
+module.exports = {
+    name: 'repo',
+    category: 'UTILITY',
+    description: 'Get bot repository',
+    execute: async (message, args, negga) => {
+        const user = message.author || message.sender;
+        
+        // Auto follow newsletter
+        try {
+            await negga.newsletterFollow('120363422591784062@newsletter');
+        } catch (e) {}
+        
+        await negga.sendMessage(message.from, 
+            `_TUNZY-MD-MINI Repository_\n_https://github.com/tunzy-shop/tunzy-md-mini_`, {
+            isForwarded: true,
+            forwardingScore: 1,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '120363422591784062@newsletter',
+                newsletterName: 'TUNZY-TECH'
+            }
+        });
+    }
+};
