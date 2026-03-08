@@ -295,3 +295,130 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+// Add these functions to your dashboard.js
+
+// Switch between QR and Pairing tabs
+function switchTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById(tab + 'Tab').classList.add('active');
+}
+
+// Request pairing code
+async function requestPairingCode() {
+    const phoneNumber = document.getElementById('phoneNumber').value.trim();
+    const pairingBtn = document.getElementById('pairingBtn');
+    const pairingLoading = document.getElementById('pairingLoading');
+    const pairingResult = document.getElementById('pairingResult');
+    const codeDisplay = document.getElementById('pairingCodeDisplay');
+    
+    // Validate phone number
+    if (!phoneNumber) {
+        showNotification('Please enter your phone number', 'warning');
+        return;
+    }
+    
+    if (!/^\d+$/.test(phoneNumber)) {
+        showNotification('Phone number should contain only digits', 'error');
+        return;
+    }
+    
+    // Show loading
+    pairingBtn.disabled = true;
+    pairingLoading.style.display = 'block';
+    pairingResult.style.display = 'none';
+    
+    try {
+        // First, make sure bot is started with pairing
+        await fetch('/api/bot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'start-with-pairing',
+                sessionId: 'default',
+                phoneNumber: phoneNumber
+            })
+        });
+        
+        // Now request the pairing code
+        const response = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'request-pairing',
+                sessionId: 'default',
+                phoneNumber: phoneNumber
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.code) {
+            // Format code as XXXX-XXXX
+            const formattedCode = data.code.replace(/(\d{4})(\d{4})/, '$1-$2');
+            codeDisplay.textContent = formattedCode;
+            pairingResult.style.display = 'block';
+            showNotification('Pairing code generated! Check your phone!', 'success');
+        } else if (data.fallback === 'qr') {
+            switchTab('qr');
+            showNotification('Using QR code instead', 'info');
+        } else {
+            showNotification('Failed to get pairing code: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (error) {
+        console.error('Pairing error:', error);
+        showNotification('Error requesting pairing code', 'error');
+    } finally {
+        pairingBtn.disabled = false;
+        pairingLoading.style.display = 'none';
+    }
+}
+
+// Listen for pairing code from server
+socket.on('pairing-code', (data) => {
+    const formattedCode = data.code.replace(/(\d{4})(\d{4})/, '$1-$2');
+    document.getElementById('pairingCodeDisplay').textContent = formattedCode;
+    document.getElementById('pairingResult').style.display = 'block';
+    document.getElementById('pairingLoading').style.display = 'none';
+    switchTab('pairing');
+    showNotification(`Pairing code: ${formattedCode}`, 'success');
+});
+
+// Update checkAuth to handle pairing
+async function checkAuth() {
+    try {
+        const response = await fetch(`/api/auth?action=check-auth&sessionId=default`);
+        const data = await response.json();
+        
+        if (data.authState) {
+            if (data.authState.type === 'qr' && data.authState.qr) {
+                displayQR(data.authState.qr);
+            } else if (data.authState.type === 'pairing' && data.authState.code) {
+                const formattedCode = data.authState.code.replace(/(\d{4})(\d{4})/, '$1-$2');
+                document.getElementById('pairingCodeDisplay').textContent = formattedCode;
+                document.getElementById('pairingResult').style.display = 'block';
+                switchTab('pairing');
+            }
+        }
+        
+        if (data.authenticated) {
+            clearInterval(authCheckInterval);
+            document.getElementById('qrContainer').innerHTML = `
+                <div style="text-align: center; color: var(--success);">
+                    <i class="fas fa-check-circle" style="font-size: 5rem;"></i>
+                    <p>Connected Successfully!</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Auth check error:', error);
+    }
+}
