@@ -131,3 +131,178 @@
     <script src="dashboard.js"></script>
 </body>
                                                                   </html>
+<!-- Connection Methods - Add Pairing Code Tab -->
+<div class="connection-card">
+    <h3><i class="fas fa-plug"></i> Connection</h3>
+    
+    <!-- Tab Buttons -->
+    <div class="connection-tabs">
+        <button class="tab-btn active" onclick="switchTab('qr')">
+            <i class="fas fa-qrcode"></i> QR Code
+        </button>
+        <button class="tab-btn" onclick="switchTab('pairing')">
+            <i class="fas fa-key"></i> Pairing Code
+        </button>
+    </div>
+
+    <!-- QR Code Tab -->
+    <div id="qrTab" class="tab-content active">
+        <div class="qr-display">
+            <div id="qrContainer" class="qr-box">
+                <div class="qr-placeholder">
+                    <i class="fas fa-qrcode"></i>
+                    <p>Turn on bot to generate QR</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ✅ NEW: Pairing Code Tab -->
+    <div id="pairingTab" class="tab-content">
+        <div class="pairing-container">
+            <div class="input-group">
+                <label for="phoneNumber">Phone Number (with country code)</label>
+                <input type="text" 
+                       id="phoneNumber" 
+                       placeholder="e.g., 1234567890"
+                       class="pairing-input">
+                <small>Include country code, no + or spaces</small>
+            </div>
+            
+            <button class="btn-primary" onclick="requestPairingCode()" id="pairingBtn">
+                <i class="fas fa-key"></i> Get Pairing Code
+            </button>
+            
+            <div id="pairingResult" style="display: none; margin-top: 20px;">
+                <h4 style="color: var(--primary-blue);">Your 8-Digit Code:</h4>
+                <div class="code-display" id="pairingCodeDisplay">0000-0000</div>
+                <div class="pairing-instructions">
+                    <p><i class="fas fa-info-circle"></i> How to use:</p>
+                    <ol>
+                        <li>Open WhatsApp on your phone</li>
+                        <li>Go to Settings → Linked Devices</li>
+                        <li>Tap "Link with phone number"</li>
+                        <li>Enter this 8-digit code</li>
+                        <li>Wait for connection</li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div id="pairingLoading" style="display: none; text-align: center; margin-top: 20px;">
+                <div class="loader"></div>
+                <p style="margin-top: 10px;">Requesting pairing code...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add these styles -->
+<style>
+.connection-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: var(--light-gray);
+    border: 2px solid transparent;
+    border-radius: 8px;
+    color: var(--white);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.tab-btn.active {
+    background: var(--primary-blue);
+    border-color: var(--white);
+}
+
+.tab-btn:hover {
+    background: var(--primary-blue);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.pairing-container {
+    padding: 10px;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--primary-blue);
+}
+
+.pairing-input {
+    width: 100%;
+    padding: 12px;
+    background: var(--light-gray);
+    border: 2px solid var(--primary-blue);
+    border-radius: 8px;
+    color: var(--white);
+    font-size: 16px;
+}
+
+.pairing-input:focus {
+    outline: none;
+    box-shadow: 0 0 15px var(--primary-blue);
+}
+
+.code-display {
+    background: var(--black);
+    color: var(--primary-blue);
+    font-size: 2.5rem;
+    font-family: monospace;
+    padding: 20px;
+    border-radius: 10px;
+    border: 3px dashed var(--primary-blue);
+    text-align: center;
+    letter-spacing: 5px;
+    margin: 15px 0;
+}
+
+.pairing-instructions {
+    background: var(--light-gray);
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+.pairing-instructions ol {
+    margin-left: 20px;
+    margin-top: 10px;
+    line-height: 1.8;
+}
+
+.pairing-instructions i {
+    color: var(--primary-blue);
+}
+
+.loader {
+    border: 4px solid var(--light-gray);
+    border-top: 4px solid var(--primary-blue);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
