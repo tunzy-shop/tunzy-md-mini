@@ -1,1 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TUNZY-MD-MINI - Control Panel</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <h1>TUNZY-MD-MINI <span id="version">v3.0</span></h1>
+            </div>
+            <div class="newsletter-badge" id="newsletterBadge">
+                <i class="fas fa-envelope"></i>
+                <span id="newsletterName">TUNZY-TECH</span>
+            </div>
+        </header>
 
+        <!-- Main Control Panel -->
+        <div class="control-panel">
+            <!-- Bot Status Card -->
+            <div class="status-card" id="mainStatus">
+                <div class="status-header">
+                    <h3><i class="fas fa-power-off"></i> Bot Status</h3>
+                    <div class="status-toggle">
+                        <label class="switch">
+                            <input type="checkbox" id="botToggle" onchange="toggleBot()">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="status-body">
+                    <div class="status-indicator" id="statusIndicator">
+                        <span class="dot" id="statusDot"></span>
+                        <span id="statusText">Offline</span>
+                    </div>
+                    <div class="status-details" id="statusDetails">
+                        <p><i class="fas fa-clock"></i> Uptime: <span id="uptime">0s</span></p>
+                        <p><i class="fas fa-terminal"></i> Commands: <span id="commandCount">0</span></p>
+                        <p><i class="fas fa-hashtag"></i> Prefix: <span id="prefix">.</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- QR Code Card -->
+            <div class="connection-card">
+                <h3><i class="fas fa-qrcode"></i> QR Code</h3>
+                <div class="qr-display">
+                    <div id="qrContainer" class="qr-box">
+                        <div class="qr-placeholder">
+                            <i class="fas fa-qrcode"></i>
+                            <p>Turn on bot to generate QR</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Newsletter Card -->
+            <div class="newsletter-card">
+                <h3><i class="fas fa-envelope"></i> Newsletter</h3>
+                <div class="newsletter-info">
+                    <p><strong>Name:</strong> <span id="newsletterDisplayName">TUNZY-TECH</span></p>
+                    <p><strong>ID:</strong> <span id="newsletterJid">120363422591784062@newsletter</span></p>
+                    <button class="btn-primary" onclick="copyNewsletter()">
+                        <i class="fas fa-copy"></i> Copy ID
+                    </button>
+                </div>
+                <div class="newsletter-steps">
+                    <h4>Auto-Follow Feature:</h4>
+                    <p>Users automatically follow newsletter when using:</p>
+                    <div class="command-tags">
+                        <span class="tag">.menu</span>
+                        <span class="tag">.alive</span>
+                        <span class="tag">.ping</span>
+                        <span class="tag">.uptime</span>
+                        <span class="tag">.repo</span>
+                        <span class="tag">.help</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session Management -->
+            <div class="session-card">
+                <h3><i class="fas fa-database"></i> Session</h3>
+                <div class="session-actions">
+                    <button class="btn-danger" onclick="deleteSession()">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                    <button class="btn-warning" onclick="restartBot()">
+                        <i class="fas fa-sync-alt"></i> Restart
+                    </button>
+                </div>
+                <div class="session-info">
+                    <p><i class="fas fa-fingerprint"></i> Session ID: <span id="sessionId">default</span></p>
+                </div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-value" id="totalCommands">0</span>
+                    <span class="stat-label">Commands Used</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="totalCommandsCount">100+</span>
+                    <span class="stat-label">Total Commands</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Commands Preview -->
+        <div class="commands-preview">
+            <h2><i class="fas fa-code"></i> Command Categories</h2>
+            <div class="category-grid" id="categoryGrid">
+                <!-- Categories loaded via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>TUNZY-MD-MINI | Auto Newsletter Follow: TUNZY-TECH | © 2026</p>
+        <p class="small">Menu commands show forwarded tag • Normal commands don't</p>
+    </footer>
+
+    <script src="dashboard.js"></script>
+</body>
+                                                                  </html>
