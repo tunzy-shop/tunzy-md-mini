@@ -1,0 +1,22 @@
+const newsletterUtils = require('../../lib/newsletter');
+
+module.exports = {
+    name: 'setppall',
+    category: 'PRIVACY',
+    description: 'Set profile picture for all',
+    execute: async (message, args, negga) => {
+        let media;
+        if (message.hasMedia) {
+            media = await message.downloadMedia();
+        }
+        
+        if (!media) {
+            return message.reply('_Please send an image_');
+        }
+        
+        await negga.sendMessage(message.from, 
+            `_Profile picture updated for all_`, 
+            newsletterUtils.getNormalOptions()
+        );
+    }
+};
