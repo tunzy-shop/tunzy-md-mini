@@ -4,6 +4,7 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const path = require('path');
@@ -33,7 +34,16 @@ async function deleteWhatsAppSession(number) {
 }
 
 async function startWhatsAppSession(number, telegramUserId, tgBot) {
+  // ── ALWAYS CLEAN OLD SESSION FIRST ──
+  if (activeSessions[number]) {
+    try { activeSessions[number].sock.end(); } catch {}
+    delete activeSessions[number];
+  }
+
   const sessionPath = path.join(SESSIONS_DIR, number);
+
+  // ── DELETE OLD CREDS SO IT PAIRS FRESH ──
+  await fs.remove(sessionPath).catch(() => {});
   await fs.ensureDir(sessionPath);
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
@@ -43,42 +53,42 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
     version,
     logger,
     printQRInTerminal: false,
-    auth: state,
-    browser: ['TUNZY-MD-MINI', 'Chrome', '1.0.0'],
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
+    browser: ['Ubuntu', 'Chrome', '20.0.04'],
+    markOnlineOnConnect: false,
   });
 
-  // ── GET PAIRING CODE ──
-  const pairingCode = await new Promise(async (resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Timeout! Try again.')), 60000);
-    try {
-      // Wait for socket to be ready
-      await new Promise(r => setTimeout(r, 3000));
-      
-      if (!sock.authState.creds.registered) {
+  // ── WAIT 5 SECONDS THEN REQUEST CODE ──
+  const pairingCode = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout! Please try again.'));
+    }, 60000);
+
+    setTimeout(async () => {
+      try {
         const code = await sock.requestPairingCode(number);
         clearTimeout(timeout);
         const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
         resolve(formatted);
-      } else {
+      } catch (err) {
         clearTimeout(timeout);
-        resolve('ALREADY_REGISTERED');
+        reject(new Error('Could not get code: ' + err.message));
       }
-    } catch (err) {
-      clearTimeout(timeout);
-      reject(err);
-    }
+    }, 5000);
   });
 
   activeSessions[number] = { sock, startTime: Date.now(), telegramUserId };
 
-  // ── CONNECTION EVENTS ──
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
 
     if (connection === 'open') {
-      console.log(`✅ WhatsApp connected: ${number}`);
+      console.log(`✅ Connected: +${number}`);
 
-      // ── NOTIFY TELEGRAM USER ──
+      // ── NOTIFY TELEGRAM ──
       if (tgBot && telegramUserId) {
         try {
           await tgBot.sendMessage(telegramUserId,
@@ -89,11 +99,8 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
             `┃  📱 Number: <b>+${number}</b>\n` +
             `┃  ✅ Status: <b>LIVE</b>\n` +
             `┃\n` +
-            `┃  Your WhatsApp bot is now\n` +
-            `┃  active and running!\n` +
-            `┃\n` +
             `┃  Send <b>.menu</b> on WhatsApp\n` +
-            `┃  to see all commands\n` +
+            `┃  to see all commands!\n` +
             `┃\n` +
             `╰══════════════════════⊷`,
             { parse_mode: 'HTML' }
@@ -103,7 +110,7 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
         }
       }
 
-      // ── AUTO JOIN CHANNEL ──
+      // ── AUTO JOIN WA CHANNEL ──
       try {
         await sock.followNewsletter(WA_CHANNEL_JID);
         console.log(`📢 Joined WA channel: ${number}`);
@@ -118,7 +125,6 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
       console.log(`❌ Disconnected: ${number} | Reconnect: ${shouldReconnect}`);
 
       if (shouldReconnect) {
-        console.log(`🔄 Reconnecting ${number} in 5s...`);
         setTimeout(() => {
           startWhatsAppSession(number, telegramUserId, tgBot);
         }, 5000);
@@ -127,7 +133,7 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
         if (tgBot && telegramUserId) {
           try {
             await tgBot.sendMessage(telegramUserId,
-              `⚠️ Bot <b>+${number}</b> was logged out!\n\nUse /pair to reconnect.`,
+              `⚠️ <b>+${number}</b> was logged out!\n\nUse /pair to reconnect.`,
               { parse_mode: 'HTML' }
             );
           } catch {}
@@ -138,7 +144,6 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // ── MESSAGES ──
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
     for (const msg of messages) {
@@ -194,25 +199,22 @@ async function handleMessage(sock, msg, ownerNumber) {
             `✓ Uptime : ${uptimeStr}\n` +
             `╰═════════════════════⊷\n\n` +
             `╭━━━━❮ *DOWNLOADER* ❯━⊷\n` +
-            `┃✓ ${PREFIX}fb\n┃✓ ${PREFIX}instagram\n┃✓ ${PREFIX}tiktok\n┃✓ ${PREFIX}play\n┃✓ ${PREFIX}video\n` +
+            `┃✓ ${PREFIX}fb\n┃✓ ${PREFIX}instagram\n┃✓ ${PREFIX}tiktok\n┃✓ ${PREFIX}play\n` +
             `╰━━━━━━━━━━━━━━━━━⊷\n\n` +
             `╭━━━━❮ *AI* ❯━⊷\n` +
             `┃✓ ${PREFIX}ai\n┃✓ ${PREFIX}deepseek\n` +
             `╰━━━━━━━━━━━━━━━━━⊷\n\n` +
             `╭━━━━❮ *TOOLS* ❯━⊷\n` +
-            `┃✓ ${PREFIX}fancy\n┃✓ ${PREFIX}sticker\n┃✓ ${PREFIX}removebg\n┃✓ ${PREFIX}shazam\n` +
+            `┃✓ ${PREFIX}fancy\n┃✓ ${PREFIX}sticker\n┃✓ ${PREFIX}removebg\n` +
             `╰━━━━━━━━━━━━━━━━━⊷\n\n` +
             `╭━━━━❮ *ADMIN* ❯━⊷\n` +
-            `┃✓ ${PREFIX}kick\n┃✓ ${PREFIX}promote\n┃✓ ${PREFIX}demote\n┃✓ ${PREFIX}tagall\n┃✓ ${PREFIX}mute\n┃✓ ${PREFIX}unmute\n` +
-            `╰━━━━━━━━━━━━━━━━━⊷\n\n` +
-            `╭━━━━❮ *SETTINGS* ❯━⊷\n` +
-            `┃✓ ${PREFIX}anti-call\n┃✓ ${PREFIX}antilink\n┃✓ ${PREFIX}auto-reply\n┃✓ ${PREFIX}auto-seen\n` +
+            `┃✓ ${PREFIX}kick\n┃✓ ${PREFIX}promote\n┃✓ ${PREFIX}demote\n┃✓ ${PREFIX}tagall\n┃✓ ${PREFIX}mute\n` +
             `╰━━━━━━━━━━━━━━━━━⊷\n\n` +
             `╭━━━━❮ *OWNER* ❯━⊷\n` +
-            `┃✓ ${PREFIX}broadcast\n┃✓ ${PREFIX}mode\n┃✓ ${PREFIX}setpp\n┃✓ ${PREFIX}sudo\n` +
+            `┃✓ ${PREFIX}broadcast\n┃✓ ${PREFIX}mode\n┃✓ ${PREFIX}setpp\n` +
             `╰━━━━━━━━━━━━━━━━━⊷\n\n` +
             `╭━━━━❮ *ANIME* ❯━⊷\n` +
-            `┃✓ ${PREFIX}hug\n┃✓ ${PREFIX}kiss\n┃✓ ${PREFIX}slap\n┃✓ ${PREFIX}pat\n┃✓ ${PREFIX}dance\n` +
+            `┃✓ ${PREFIX}hug\n┃✓ ${PREFIX}kiss\n┃✓ ${PREFIX}slap\n┃✓ ${PREFIX}pat\n` +
             `╰━━━━━━━━━━━━━━━━━⊷\n\n` +
             `╭━━━━❮ *GAME* ❯━⊷\n` +
             `┃✓ ${PREFIX}ttt\n┃✓ ${PREFIX}tod\n` +
@@ -222,13 +224,7 @@ async function handleMessage(sock, msg, ownerNumber) {
         break;
 
       case 'alive':
-        await reply(
-          `╭═════${BOT_NAME}═════⊷\n` +
-          `┃  🟢 Bot is ALIVE!\n` +
-          `┃  ⏰ Uptime: ${uptimeStr}\n` +
-          `┃  👑 Owner: ${OWNER_NAME}\n` +
-          `╰═════════════════════⊷`
-        );
+        await reply(`╭═════${BOT_NAME}═════⊷\n┃  🟢 Bot is ALIVE!\n┃  ⏰ Uptime: ${uptimeStr}\n┃  👑 Owner: ${OWNER_NAME}\n╰═════════════════════⊷`);
         break;
 
       case 'ping': {
@@ -241,9 +237,10 @@ async function handleMessage(sock, msg, ownerNumber) {
         await reply(`⏰ Uptime: ${uptimeStr}`);
         break;
 
-      case 'ai': {
+      case 'ai':
+      case 'deepseek': {
         const q = args.join(' ');
-        if (!q) return reply(`❌ Usage: ${PREFIX}ai <question>`);
+        if (!q) return reply(`❌ Usage: ${PREFIX}${command} <question>`);
         await reply('🤖 Thinking...');
         try {
           const axios = require('axios');
@@ -268,6 +265,10 @@ async function handleMessage(sock, msg, ownerNumber) {
 
       case 'jid':
         await reply(`📌 JID: ${from}\n👤 Sender: ${sender}`);
+        break;
+
+      case 'repo':
+        await reply(`📦 ${BOT_NAME} v${BOT_VERSION}\ngithub.com/tunzy-shop/tunzy-md-mini`);
         break;
 
       case 'kick': {
@@ -301,9 +302,9 @@ async function handleMessage(sock, msg, ownerNumber) {
         if (!isGroup) return reply('❌ Group only!');
         const meta = await sock.groupMetadata(from);
         const members = meta.participants.map(p => p.id);
-        const text2 = args.join(' ') || '📢 Attention!';
+        const txt = args.join(' ') || '📢 Attention!';
         await sock.sendMessage(from, {
-          text: text2 + '\n\n' + members.map(m => `@${m.split('@')[0]}`).join(' '),
+          text: txt + '\n\n' + members.map(m => `@${m.split('@')[0]}`).join(' '),
           mentions: members
         });
         break;
@@ -326,7 +327,7 @@ async function handleMessage(sock, msg, ownerNumber) {
       case 'add': {
         if (!isGroup) return reply('❌ Group only!');
         const num = args[0]?.replace(/[^0-9]/g, '');
-        if (!num) return reply(`❌ Usage: ${PREFIX}add +number`);
+        if (!num) return reply('❌ Usage: .add +number');
         await sock.groupParticipantsUpdate(from, [num + '@s.whatsapp.net'], 'add');
         await reply(`✅ Added +${num}!`);
         break;
@@ -339,10 +340,26 @@ async function handleMessage(sock, msg, ownerNumber) {
         break;
       }
 
+      case 'warn': {
+        if (!isGroup) return reply('❌ Group only!');
+        const target = msg.message?.extendedTextMessage?.contextInfo?.participant;
+        if (!target) return reply('❌ Reply to a message to warn.');
+        await sock.sendMessage(from, { text: `⚠️ @${target.split('@')[0]} warned!`, mentions: [target] }, { quoted: msg });
+        break;
+      }
+
+      case 'del': {
+        const key = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+        const participant = msg.message?.extendedTextMessage?.contextInfo?.participant;
+        if (!key) return reply('❌ Reply to a message to delete.');
+        await sock.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: key, participant } });
+        break;
+      }
+
       case 'broadcast': {
         if (!isOwner) return reply('❌ Owner only!');
         const bcText = args.join(' ');
-        if (!bcText) return reply(`❌ Usage: ${PREFIX}broadcast <message>`);
+        if (!bcText) return reply('❌ Usage: .broadcast <message>');
         const chats = await sock.groupFetchAllParticipating();
         let sent = 0;
         for (const chat of Object.values(chats)) {
@@ -352,12 +369,37 @@ async function handleMessage(sock, msg, ownerNumber) {
         break;
       }
 
+      case 'setonline': {
+        if (!isOwner) return reply('❌ Owner only!');
+        await sock.sendPresenceUpdate('available');
+        await reply('✅ Online!');
+        break;
+      }
+
+      case 'setmyname': {
+        if (!isOwner) return reply('❌ Owner only!');
+        const name = args.join(' ');
+        if (!name) return reply('❌ Usage: .setmyname <name>');
+        await sock.updateProfileName(name);
+        await reply(`✅ Name: ${name}`);
+        break;
+      }
+
+      case 'updatebio': {
+        if (!isOwner) return reply('❌ Owner only!');
+        const bio = args.join(' ');
+        if (!bio) return reply('❌ Usage: .updatebio <bio>');
+        await sock.updateProfileStatus(bio);
+        await reply('✅ Bio updated!');
+        break;
+      }
+
       case 'tod': {
         const list = [
-          'Truth: What is your biggest secret?',
+          'Truth: Biggest secret?',
           'Dare: Send a voice note singing!',
-          'Truth: Who do you have a crush on?',
-          'Dare: Change your status for 1 hour!',
+          'Truth: Who is your crush?',
+          'Dare: Change status for 1hr!',
           'Truth: Last person you texted?',
           'Dare: Send a selfie!'
         ];
@@ -384,59 +426,11 @@ async function handleMessage(sock, msg, ownerNumber) {
         break;
       }
 
-      case 'setonline': {
-        if (!isOwner) return reply('❌ Owner only!');
-        await sock.sendPresenceUpdate('available');
-        await reply('✅ Online!');
-        break;
-      }
-
-      case 'setmyname': {
-        if (!isOwner) return reply('❌ Owner only!');
-        const name = args.join(' ');
-        if (!name) return reply(`❌ Usage: ${PREFIX}setmyname <name>`);
-        await sock.updateProfileName(name);
-        await reply(`✅ Name: ${name}`);
-        break;
-      }
-
-      case 'updatebio': {
-        if (!isOwner) return reply('❌ Owner only!');
-        const bio = args.join(' ');
-        if (!bio) return reply(`❌ Usage: ${PREFIX}updatebio <bio>`);
-        await sock.updateProfileStatus(bio);
-        await reply(`✅ Bio updated!`);
-        break;
-      }
-
-      case 'warn': {
-        if (!isGroup) return reply('❌ Group only!');
-        const target = msg.message?.extendedTextMessage?.contextInfo?.participant;
-        if (!target) return reply('❌ Reply to a message to warn.');
-        await sock.sendMessage(from, {
-          text: `⚠️ @${target.split('@')[0]} has been warned!`,
-          mentions: [target]
-        }, { quoted: msg });
-        break;
-      }
-
-      case 'del': {
-        const key = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
-        const participant = msg.message?.extendedTextMessage?.contextInfo?.participant;
-        if (!key) return reply('❌ Reply to a message to delete.');
-        await sock.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: key, participant } });
-        break;
-      }
-
-      case 'repo':
-        await reply(`📦 ${BOT_NAME} v${BOT_VERSION}\ngithub.com/tunzy-shop/tunzy-md-mini`);
-        break;
-
       default:
         break;
     }
   } catch (err) {
-    console.error('Message handler error:', err.message);
+    console.error('Handler error:', err.message);
   }
 }
 
