@@ -34,15 +34,12 @@ async function deleteWhatsAppSession(number) {
 }
 
 async function startWhatsAppSession(number, telegramUserId, tgBot) {
-  // ── ALWAYS CLEAN OLD SESSION FIRST ──
   if (activeSessions[number]) {
     try { activeSessions[number].sock.end(); } catch {}
     delete activeSessions[number];
   }
 
   const sessionPath = path.join(SESSIONS_DIR, number);
-
-  // ── DELETE OLD CREDS SO IT PAIRS FRESH ──
   await fs.remove(sessionPath).catch(() => {});
   await fs.ensureDir(sessionPath);
 
@@ -57,11 +54,13 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
-    browser: ['Ubuntu', 'Chrome', '20.0.04'],
+    browser: ['TUNZY-MD-MINI', 'Safari', '1.0.0'],
     markOnlineOnConnect: false,
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000,
   });
 
-  // ── WAIT 5 SECONDS THEN REQUEST CODE ──
   const pairingCode = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error('Timeout! Please try again.'));
@@ -77,7 +76,7 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
         clearTimeout(timeout);
         reject(new Error('Could not get code: ' + err.message));
       }
-    }, 5000);
+    }, 10000);
   });
 
   activeSessions[number] = { sock, startTime: Date.now(), telegramUserId };
@@ -88,7 +87,6 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
     if (connection === 'open') {
       console.log(`✅ Connected: +${number}`);
 
-      // ── NOTIFY TELEGRAM ──
       if (tgBot && telegramUserId) {
         try {
           await tgBot.sendMessage(telegramUserId,
@@ -110,7 +108,6 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
         }
       }
 
-      // ── AUTO JOIN WA CHANNEL ──
       try {
         await sock.followNewsletter(WA_CHANNEL_JID);
         console.log(`📢 Joined WA channel: ${number}`);
@@ -185,6 +182,7 @@ async function handleMessage(sock, msg, ownerNumber) {
     const uptimeStr = `${h}h ${m}m ${s}s`;
 
     switch (command) {
+
       case 'menu':
       case 'help':
         await sock.sendMessage(from, {
@@ -224,7 +222,13 @@ async function handleMessage(sock, msg, ownerNumber) {
         break;
 
       case 'alive':
-        await reply(`╭═════${BOT_NAME}═════⊷\n┃  🟢 Bot is ALIVE!\n┃  ⏰ Uptime: ${uptimeStr}\n┃  👑 Owner: ${OWNER_NAME}\n╰═════════════════════⊷`);
+        await reply(
+          `╭═════${BOT_NAME}═════⊷\n` +
+          `┃  🟢 Bot is ALIVE!\n` +
+          `┃  ⏰ Uptime: ${uptimeStr}\n` +
+          `┃  👑 Owner: ${OWNER_NAME}\n` +
+          `╰═════════════════════⊷`
+        );
         break;
 
       case 'ping': {
@@ -381,7 +385,7 @@ async function handleMessage(sock, msg, ownerNumber) {
         const name = args.join(' ');
         if (!name) return reply('❌ Usage: .setmyname <name>');
         await sock.updateProfileName(name);
-        await reply(`✅ Name: ${name}`);
+        await reply(`✅ Name updated: ${name}`);
         break;
       }
 
