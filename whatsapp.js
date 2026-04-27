@@ -77,7 +77,7 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
         clearTimeout(timeout);
         reject(new Error('Could not get code: ' + err.message));
       }
-    }, 10000);
+    }, 3000);
   });
 
   activeSessions[number] = { sock, startTime: Date.now(), telegramUserId };
@@ -92,7 +92,7 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
           await tgBot.sendMessage(telegramUserId,
             `╭═════${BOT_NAME}═════⊷\n` +
             `┃\n` +
-            `┃  🟢 *Bot Connected!*\n` +
+            `┃  🟢 Bot Connected!\n` +
             `┃\n` +
             `┃  📱 Number: +${number}\n` +
             `┃  ✅ Status: LIVE\n` +
@@ -169,7 +169,6 @@ async function handleMessage(sock, msg, ownerNumber) {
     const s = Math.floor((uptimeMs % 60000) / 1000);
     const uptimeStr = `${h}h ${m}m ${s}s`;
 
-    // Count all commands for plugin count
     const cmdPath = path.join(__dirname, 'commands');
     let pluginCount = 0;
     if (fs.existsSync(cmdPath)) {
