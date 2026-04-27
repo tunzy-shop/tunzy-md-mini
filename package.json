@@ -3,11 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "install-deps": "npm install --legacy-peer-deps"
+    "start": "node index.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.9",
+    "@whiskeysockets/baileys": "6.5.0",
     "node-telegram-bot-api": "^0.66.0",
     "axios": "^1.6.0",
     "pino": "^8.17.0",
