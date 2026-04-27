@@ -61,23 +61,25 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
     keepAliveIntervalMs: 10000,
   });
 
-  const pairingCode = await new Promise((resolve, reject) => {
+  // FIXED: Request pairing code immediately without delay
+  const pairingCode = await new Promise(async (resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error('Timeout! Please try again.'));
     }, 60000);
 
-    setTimeout(async () => {
-      try {
-        const formattedNumber = number.replace(/[^0-9]/g, '');
-        const code = await sock.requestPairingCode(formattedNumber);
-        clearTimeout(timeout);
-        const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
-        resolve(formatted);
-      } catch (err) {
-        clearTimeout(timeout);
-        reject(new Error('Could not get code: ' + err.message));
-      }
-    }, 3000);
+    try {
+      const formattedNumber = number.replace(/[^0-9]/g, '');
+      console.log(`Requesting pairing code for: ${formattedNumber}`);
+      const code = await sock.requestPairingCode(formattedNumber);
+      clearTimeout(timeout);
+      const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
+      console.log(`Pairing code generated: ${formatted}`);
+      resolve(formatted);
+    } catch (err) {
+      clearTimeout(timeout);
+      console.error(`Pairing error: ${err.message}`);
+      reject(new Error('Could not get code: ' + err.message));
+    }
   });
 
   activeSessions[number] = { sock, startTime: Date.now(), telegramUserId };
