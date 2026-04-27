@@ -10,13 +10,13 @@ const pino = require('pino');
 const path = require('path');
 const fs = require('fs-extra');
 
-const SESSIONS_DIR = './sessions';
-const OWNER_NUMBER = '2349067345425';
-const OWNER_NAME = 'TUNZY SHOP';
-const BOT_NAME = 'TUNZY-MD-MINI';
-const PREFIX = '.';
-const BOT_VERSION = '1.00';
-const WA_CHANNEL_JID = '120363422591784062@newsletter';
+const SESSIONS_DIR = process.env.SESSIONS_DIR || './sessions';
+const OWNER_NUMBER = process.env.OWNER_NUMBER || '2349067345425';
+const OWNER_NAME = process.env.OWNER_NAME || 'TUNZY SHOP';
+const BOT_NAME = process.env.BOT_NAME || 'TUNZY-MD-MINI';
+const PREFIX = process.env.BOT_PREFIX || '.';
+const BOT_VERSION = process.env.BOT_VERSION || '1.00';
+const WA_CHANNEL_JID = process.env.WA_CHANNEL_JID || '120363422591784062@newsletter';
 
 const activeSessions = {};
 const logger = pino({ level: 'silent' });
@@ -34,6 +34,7 @@ async function deleteWhatsAppSession(number) {
 }
 
 async function startWhatsAppSession(number, telegramUserId, tgBot) {
+  // Clean up any existing session
   if (activeSessions[number]) {
     try { activeSessions[number].sock.end(); } catch {}
     delete activeSessions[number];
@@ -44,7 +45,15 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
   await fs.ensureDir(sessionPath);
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-  const { version } = await fetchLatestBaileysVersion();
+
+  let version;
+  try {
+    const result = await fetchLatestBaileysVersion();
+    version = result.version;
+  } catch {
+    // Fallback version if network fetch fails
+    version = [2, 3000, 1017531287];
+  }
 
   const sock = makeWASocket({
     version,
@@ -54,35 +63,18 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
-    browser: ['Windows', 'Chrome', '110.0.0'],
+    browser: ['Ubuntu', 'Chrome', '120.0.0'],
     markOnlineOnConnect: false,
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: 60000,
     keepAliveIntervalMs: 10000,
   });
 
-  // FIXED: Request pairing code immediately without delay
-  const pairingCode = await new Promise(async (resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Timeout! Please try again.'));
-    }, 60000);
-
-    try {
-      const formattedNumber = number.replace(/[^0-9]/g, '');
-      console.log(`Requesting pairing code for: ${formattedNumber}`);
-      const code = await sock.requestPairingCode(formattedNumber);
-      clearTimeout(timeout);
-      const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
-      console.log(`Pairing code generated: ${formatted}`);
-      resolve(formatted);
-    } catch (err) {
-      clearTimeout(timeout);
-      console.error(`Pairing error: ${err.message}`);
-      reject(new Error('Could not get code: ' + err.message));
-    }
-  });
-
+  // Store session reference immediately
   activeSessions[number] = { sock, startTime: Date.now(), telegramUserId };
+
+  // Register persistent event handlers
+  sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
@@ -109,13 +101,14 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
       try {
         await sock.followNewsletter(WA_CHANNEL_JID);
         console.log(`📢 Joined WA channel: ${number}`);
-      } catch (e) { console.log('Channel join error:', e.message); }
+      } catch (e) { console.log('Channel join skipped:', e.message); }
     }
 
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log(`❌ Disconnected: ${number} | Reconnect: ${shouldReconnect}`);
+      console.log(`❌ Disconnected: ${number} | Code: ${code} | Reconnect: ${shouldReconnect}`);
+
       if (shouldReconnect) {
         setTimeout(() => startWhatsAppSession(number, telegramUserId, tgBot), 5000);
       } else {
@@ -131,8 +124,6 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
     }
   });
 
-  sock.ev.on('creds.update', saveCreds);
-
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
     for (const msg of messages) {
@@ -140,6 +131,34 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
       if (msg.key.fromMe) continue;
       await handleMessage(sock, msg, number);
     }
+  });
+
+  // FIX: Request pairing code after a short delay to allow the socket
+  // to initialise its internal WebSocket connection. Baileys requires
+  // the socket to be in a "connecting" state (not yet registered) for
+  // requestPairingCode() to work. We do NOT wait for 'open' — that only
+  // fires after the user enters the code. Instead we wait ~1.5s for the
+  // WS handshake, then request the code.
+  const pairingCode = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout waiting for pairing code. Please try again.'));
+    }, 60000);
+
+    setTimeout(async () => {
+      try {
+        const formattedNumber = number.replace(/[^0-9]/g, '');
+        console.log(`Requesting pairing code for: ${formattedNumber}`);
+        const code = await sock.requestPairingCode(formattedNumber);
+        clearTimeout(timeout);
+        const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
+        console.log(`Pairing code generated: ${formatted}`);
+        resolve(formatted);
+      } catch (err) {
+        clearTimeout(timeout);
+        console.error(`Pairing error: ${err.message}`);
+        reject(new Error('Could not get pairing code: ' + err.message));
+      }
+    }, 1500);
   });
 
   return pairingCode;
