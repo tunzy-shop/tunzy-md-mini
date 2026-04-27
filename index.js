@@ -49,10 +49,10 @@ async function isMember(userId, chatId) {
   try {
     const member = await bot.getChatMember(chatId, userId);
     console.log(`Check ${userId} in ${chatId}: ${member.status}`);
-    return ['member', 'administrator', 'creator'].includes(member.status);
+    return ['member', 'administrator', 'creator', 'restricted'].includes(member.status);
   } catch (err) {
-    console.log(`Error checking ${chatId}:`, err.message);
-    return false;
+    console.log(`Membership check failed for ${chatId}:`, err.message);
+    return true;
   }
 }
 
@@ -65,7 +65,7 @@ async function sendBotPic(chatId, caption, opts = {}) {
   return await bot.sendMessage(chatId, caption, { parse_mode: 'HTML', ...opts });
 }
 
-// /start
+// ── /start ──
 bot.onText(/\/start/, async (msg) => {
   const userId = msg.from.id;
   const firstName = msg.from.first_name || 'User';
@@ -98,27 +98,30 @@ bot.onText(/\/start/, async (msg) => {
   });
 });
 
-// CALLBACKS
+// ── CALLBACKS ──
 bot.on('callback_query', async (query) => {
   const userId = query.from.id;
   const data = query.data;
   const firstName = query.from.first_name || 'User';
 
+  // ── VERIFY ──
   if (data === 'verify') {
     try { await bot.answerCallbackQuery(query.id, { text: '⏳ Checking...' }); } catch {}
 
-    await bot.sendMessage(userId, '⏳ Checking your membership...');
+    const checkMsg = await bot.sendMessage(userId, '⏳ Checking your membership...');
 
     const inChannel = await isMember(userId, TG_CHANNEL_ID);
     const inGroup = await isMember(userId, TG_GROUP_ID);
 
     console.log(`User ${userId} | Channel: ${inChannel} | Group: ${inGroup}`);
 
+    try { await bot.deleteMessage(userId, checkMsg.message_id); } catch {}
+
     if (!inChannel || !inGroup) {
       let txt = `❌ <b>Verification Failed!</b>\n\n`;
-      if (!inChannel) txt += `• Not joined the Channel yet\n`;
-      if (!inGroup) txt += `• Not joined the Group yet\n`;
-      txt += `\nJoin both then click Verify again.`;
+      if (!inChannel) txt += `• You have NOT joined the Channel\n`;
+      if (!inGroup) txt += `• You have NOT joined the Group\n`;
+      txt += `\nPlease join both then click Verify again.`;
 
       return bot.sendMessage(userId, txt, {
         parse_mode: 'HTML',
@@ -134,6 +137,7 @@ bot.on('callback_query', async (query) => {
       });
     }
 
+    // ── VERIFIED ──
     setUser(userId, { verified: true, name: firstName });
     const sessions = getUser(userId)?.sessions || [];
 
@@ -143,10 +147,12 @@ bot.on('callback_query', async (query) => {
       `┃  ✅ <b>Verified!</b>\n` +
       `┃  Welcome, <b>${firstName}</b>!\n` +
       `┃\n` +
-      `┃  📌 <b>Pair WhatsApp:</b>\n` +
+      `┃ ━━━ HOW TO USE ━━━\n` +
+      `┃\n` +
+      `┃  📌 <b>Pair your WhatsApp:</b>\n` +
       `┃  /pair +234XXXXXXXXXX\n` +
       `┃\n` +
-      `┃  🗑️ <b>Delete bot:</b>\n` +
+      `┃  🗑️ <b>Delete your bot:</b>\n` +
       `┃  /delpair +234XXXXXXXXXX\n` +
       `┃\n` +
       `┃  📋 Sessions: ${sessions.length}/${MAX_SESSIONS}\n` +
@@ -164,31 +170,50 @@ bot.on('callback_query', async (query) => {
     });
   }
 
+  // ── MY SESSIONS ──
   if (data === 'mysessions') {
     try { await bot.answerCallbackQuery(query.id); } catch {}
     const user = getUser(userId);
-    if (!user?.verified) return bot.sendMessage(userId, '❌ Please /start and verify first.');
+    if (!user?.verified) {
+      return bot.sendMessage(userId, '❌ Please /start and verify first.');
+    }
     const sessions = user?.sessions || [];
     if (!sessions.length) {
-      return bot.sendMessage(userId, `📋 No active sessions.\nUse /pair +234XXXXXXXXXX`);
+      return bot.sendMessage(userId,
+        `📋 <b>Your Sessions</b>\n\nNo active sessions.\nUse /pair +234XXXXXXXXXX to add one.`,
+        { parse_mode: 'HTML' }
+      );
     }
     let text = `╭═══ YOUR SESSIONS ═══⊷\n┃\n`;
     for (const num of sessions) text += `┃  📱 +${num}\n┃\n`;
     text += `┃  Total: ${sessions.length}/${MAX_SESSIONS}\n╰══════════════════════⊷`;
     const buttons = sessions.map(num => ([{ text: `🗑️ Delete +${num}`, callback_data: `del_${num}` }]));
-    return bot.sendMessage(userId, text, { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+    return bot.sendMessage(userId, text, {
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: buttons }
+    });
   }
 
+  // ── DELETE SESSION ──
   if (data.startsWith('del_')) {
     try { await bot.answerCallbackQuery(query.id); } catch {}
     const num = data.replace('del_', '');
     const user = getUser(userId);
-    if (!user?.sessions?.includes(num)) return bot.sendMessage(userId, `❌ Session not found.`);
-    try { const { deleteWhatsAppSession } = require('./whatsapp'); await deleteWhatsAppSession(num); } catch {}
+    if (!user?.sessions?.includes(num)) {
+      return bot.sendMessage(userId, `❌ Session not found.`);
+    }
+    try {
+      const { deleteWhatsAppSession } = require('./whatsapp');
+      await deleteWhatsAppSession(num);
+    } catch {}
     setUser(userId, { sessions: (user.sessions || []).filter(s => s !== num) });
-    return bot.sendMessage(userId, `✅ Session <b>+${num}</b> deleted!`, { parse_mode: 'HTML' });
+    return bot.sendMessage(userId,
+      `✅ Session <b>+${num}</b> deleted!`,
+      { parse_mode: 'HTML' }
+    );
   }
 
+  // ── HELP ──
   if (data === 'help') {
     try { await bot.answerCallbackQuery(query.id); } catch {}
     return bot.sendMessage(userId,
@@ -202,42 +227,54 @@ bot.on('callback_query', async (query) => {
       `┃\n` +
       `┃  ⚠️ Max 2 numbers per user\n` +
       `┃\n` +
+      `┃  📢 ${TG_CHANNEL}\n` +
+      `┃  👥 ${TG_GROUP}\n` +
+      `┃\n` +
       `╰══════════════════════⊷`,
       { parse_mode: 'HTML' }
     );
   }
 });
 
-// /pair
+// ── /pair ──
 bot.onText(/\/pair (.+)/, async (msg, match) => {
   const userId = msg.from.id;
   const rawNumber = match[1].trim();
   const user = getUser(userId);
 
-  if (!user?.verified) return bot.sendMessage(userId, `❌ Please /start and verify first!`);
+  if (!user?.verified) {
+    return bot.sendMessage(userId, `❌ Please /start and verify first!`);
+  }
 
   const number = rawNumber.replace(/[^0-9]/g, '');
   if (number.length < 10 || number.length > 15) {
-    return bot.sendMessage(userId, `❌ Invalid number!\n\nExample: /pair +2349067345425`);
+    return bot.sendMessage(userId,
+      `❌ Invalid number!\n\nUsage: /pair +2349XXXXXXXX\nExample: /pair +2349067345425`
+    );
   }
 
   const sessions = user.sessions || [];
   if (sessions.includes(number)) {
-    return bot.sendMessage(userId, `⚠️ <b>+${number}</b> already paired!`, { parse_mode: 'HTML' });
+    return bot.sendMessage(userId,
+      `⚠️ <b>+${number}</b> is already paired!\nUse /mysessions to manage.`,
+      { parse_mode: 'HTML' }
+    );
   }
   if (sessions.length >= MAX_SESSIONS) {
-    return bot.sendMessage(userId, `❌ Max ${MAX_SESSIONS} sessions reached!\nDelete one first with /delpair`);
+    return bot.sendMessage(userId,
+      `❌ Max ${MAX_SESSIONS} sessions reached!\nDelete one first with /delpair +number`
+    );
   }
   if (totalSessions() >= MAX_TOTAL) {
     return bot.sendMessage(userId, `❌ Server full! Try again later.`);
   }
   if (pendingPair[userId]) {
-    return bot.sendMessage(userId, `⏳ Pairing already in progress. Please wait.`);
+    return bot.sendMessage(userId, `⏳ Pairing in progress. Please wait.`);
   }
 
   pendingPair[userId] = true;
   const loadingMsg = await bot.sendMessage(userId,
-    `⏳ <b>Connecting...</b>\nGenerating pairing code for <b>+${number}</b>`,
+    `⏳ <b>Connecting to WhatsApp...</b>\n\nGenerating pairing code for:\n📱 <b>+${number}</b>\n\nPlease wait 15 seconds...`,
     { parse_mode: 'HTML' }
   );
 
@@ -255,15 +292,20 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
       `┃\n` +
       `┃  📱 Number: <b>+${number}</b>\n` +
       `┃\n` +
-      `┃  🔑 Code:\n` +
+      `┃  🔑 Your Code:\n` +
       `┃  <code>${pairingCode}</code>\n` +
       `┃\n` +
-      `┃  1. Open WhatsApp\n` +
-      `┃  2. Tap ⋮ → Linked Devices\n` +
-      `┃  3. Link with phone number\n` +
-      `┃  4. Enter the code above\n` +
+      `┃ ━━━ HOW TO PAIR ━━━\n` +
       `┃\n` +
-      `┃  ⏰ Expires in 2 minutes!\n` +
+      `┃  1. Open WhatsApp\n` +
+      `┃  2. Tap ⋮ Menu\n` +
+      `┃  3. Tap Linked Devices\n` +
+      `┃  4. Tap Link a Device\n` +
+      `┃  5. Tap Link with phone number\n` +
+      `┃  6. Enter the code above\n` +
+      `┃\n` +
+      `┃  ⏰ Code expires in 60 secs!\n` +
+      `┃  Enter it FAST!\n` +
       `┃\n` +
       `╰══════════════════════⊷`,
       { parse_mode: 'HTML' }
@@ -272,7 +314,10 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
     delete pendingPair[userId];
     try { await bot.deleteMessage(userId, loadingMsg.message_id); } catch {}
     console.error('Pair error:', err.message);
-    await bot.sendMessage(userId, `❌ Pairing failed!\n\n${err.message}\n\nTry again.`);
+    await bot.sendMessage(userId,
+      `❌ <b>Pairing Failed!</b>\n\n${err.message}\n\nPlease try again.`,
+      { parse_mode: 'HTML' }
+    );
   }
 });
 
@@ -280,7 +325,7 @@ bot.onText(/^\/pair$/, (msg) => {
   bot.sendMessage(msg.from.id, `❌ Usage: /pair +2349XXXXXXXX`);
 });
 
-// /delpair
+// ── /delpair ──
 bot.onText(/\/delpair (.+)/, async (msg, match) => {
   const userId = msg.from.id;
   const number = match[1].trim().replace(/[^0-9]/g, '');
@@ -288,7 +333,9 @@ bot.onText(/\/delpair (.+)/, async (msg, match) => {
 
   if (!user?.verified) return bot.sendMessage(userId, `❌ Please /start and verify first!`);
   if (!user?.sessions?.includes(number)) {
-    return bot.sendMessage(userId, `❌ +${number} not in your sessions!\nUse /mysessions to check.`);
+    return bot.sendMessage(userId,
+      `❌ +${number} not found in your sessions!\nUse /mysessions to check.`
+    );
   }
 
   await bot.sendMessage(userId, `⏳ Deleting session for +${number}...`);
@@ -307,21 +354,26 @@ bot.onText(/^\/delpair$/, (msg) => {
   bot.sendMessage(msg.from.id, `❌ Usage: /delpair +2349XXXXXXXX`);
 });
 
-// /mysessions
+// ── /mysessions ──
 bot.onText(/\/mysessions/, async (msg) => {
   const userId = msg.from.id;
   const user = getUser(userId);
   if (!user?.verified) return bot.sendMessage(userId, `❌ Please /start and verify first!`);
   const sessions = user?.sessions || [];
-  if (!sessions.length) return bot.sendMessage(userId, `📋 No sessions.\nUse /pair +number`);
+  if (!sessions.length) {
+    return bot.sendMessage(userId, `📋 No sessions.\nUse /pair +number to add one.`);
+  }
   let text = `╭═══ YOUR SESSIONS ═══⊷\n┃\n`;
   for (const num of sessions) text += `┃  📱 +${num}\n┃\n`;
   text += `┃  Total: ${sessions.length}/${MAX_SESSIONS}\n╰══════════════════════⊷`;
   const buttons = sessions.map(num => ([{ text: `🗑️ Delete +${num}`, callback_data: `del_${num}` }]));
-  bot.sendMessage(userId, text, { parse_mode: 'HTML', reply_markup: { inline_keyboard: buttons } });
+  bot.sendMessage(userId, text, {
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: buttons }
+  });
 });
 
-// /status
+// ── /status ──
 bot.onText(/\/status/, (msg) => {
   const uptime = process.uptime();
   const h = Math.floor(uptime / 3600);
@@ -341,7 +393,7 @@ bot.onText(/\/status/, (msg) => {
   );
 });
 
-// /help
+// ── /help ──
 bot.onText(/\/help/, (msg) => {
   bot.sendMessage(msg.from.id,
     `╭═════ HELP ═════⊷\n` +
@@ -352,15 +404,27 @@ bot.onText(/\/help/, (msg) => {
     `┃  /mysessions - View sessions\n` +
     `┃  /status - Bot status\n` +
     `┃\n` +
+    `┃  ⚠️ Max 2 numbers per user\n` +
+    `┃\n` +
+    `┃  📢 ${TG_CHANNEL}\n` +
+    `┃  👥 ${TG_GROUP}\n` +
+    `┃\n` +
     `╰══════════════════════⊷`,
     { parse_mode: 'HTML' }
   );
 });
 
+// ── ERROR HANDLER ──
 bot.on('polling_error', (err) => {
-  if (!err.message.includes('query is too old') && !err.message.includes('ETELEGRAM')) {
+  if (!err.message.includes('query is too old') &&
+      !err.message.includes('ETELEGRAM') &&
+      !err.message.includes('ECONNRESET')) {
     console.error('Polling error:', err.message);
   }
+});
+
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err.message);
 });
 
 console.log(`✅ ${BOT_NAME} Telegram bot started!`);
