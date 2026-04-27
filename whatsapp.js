@@ -54,7 +54,7 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
-    browser: ['TUNZY-MD-MINI', 'Safari', '1.0.0'],
+    browser: ['Windows', 'Chrome', '110.0.0'],
     markOnlineOnConnect: false,
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: 60000,
