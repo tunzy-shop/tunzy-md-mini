@@ -8,8 +8,6 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 const TG_CHANNEL = 'https://t.me/tunzy_md';
 const TG_GROUP = 'https://t.me/tunzymd_tech';
-const TG_CHANNEL_ID = '@tunzy_md';
-const TG_GROUP_ID = '@tunzymd_tech';
 const MAX_SESSIONS = 2;
 const MAX_TOTAL = 300;
 const SESSIONS_DIR = './sessions';
@@ -44,17 +42,6 @@ function totalSessions() {
 }
 
 const pendingPair = {};
-
-async function isMember(userId, chatId) {
-  try {
-    const member = await bot.getChatMember(chatId, userId);
-    console.log(`Check ${userId} in ${chatId}: ${member.status}`);
-    return ['member', 'administrator', 'creator', 'restricted'].includes(member.status);
-  } catch (err) {
-    console.log(`Membership check failed for ${chatId}:`, err.message);
-    return true;
-  }
-}
 
 async function sendBotPic(chatId, caption, opts = {}) {
   try {
@@ -108,20 +95,34 @@ bot.on('callback_query', async (query) => {
   if (data === 'verify') {
     try { await bot.answerCallbackQuery(query.id, { text: '⏳ Checking...' }); } catch {}
 
-    const checkMsg = await bot.sendMessage(userId, '⏳ Checking your membership...');
+    await bot.sendMessage(userId, '⏳ Verifying your membership...');
 
-    const inChannel = await isMember(userId, TG_CHANNEL_ID);
-    const inGroup = await isMember(userId, TG_GROUP_ID);
+    let inChannel = false;
+    let inGroup = false;
+
+    try {
+      const cm1 = await bot.getChatMember('@tunzy_md', userId);
+      inChannel = ['member', 'administrator', 'creator', 'restricted'].includes(cm1.status);
+      console.log(`Channel status for ${userId}: ${cm1.status}`);
+    } catch (e) {
+      console.log('Channel check error:', e.message);
+    }
+
+    try {
+      const cm2 = await bot.getChatMember('@tunzymd_tech', userId);
+      inGroup = ['member', 'administrator', 'creator', 'restricted'].includes(cm2.status);
+      console.log(`Group status for ${userId}: ${cm2.status}`);
+    } catch (e) {
+      console.log('Group check error:', e.message);
+    }
 
     console.log(`User ${userId} | Channel: ${inChannel} | Group: ${inGroup}`);
-
-    try { await bot.deleteMessage(userId, checkMsg.message_id); } catch {}
 
     if (!inChannel || !inGroup) {
       let txt = `❌ <b>Verification Failed!</b>\n\n`;
       if (!inChannel) txt += `• You have NOT joined the Channel\n`;
       if (!inGroup) txt += `• You have NOT joined the Group\n`;
-      txt += `\nPlease join both then click Verify again.`;
+      txt += `\nJoin both then click Verify again!`;
 
       return bot.sendMessage(userId, txt, {
         parse_mode: 'HTML',
@@ -249,7 +250,7 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
   const number = rawNumber.replace(/[^0-9]/g, '');
   if (number.length < 10 || number.length > 15) {
     return bot.sendMessage(userId,
-      `❌ Invalid number!\n\nUsage: /pair +2349XXXXXXXX\nExample: /pair +2349067345425`
+      `❌ Invalid number!\n\nUsage: /pair +2349XXXXXXXX`
     );
   }
 
@@ -304,8 +305,7 @@ bot.onText(/\/pair (.+)/, async (msg, match) => {
       `┃  5. Tap Link with phone number\n` +
       `┃  6. Enter the code above\n` +
       `┃\n` +
-      `┃  ⏰ Code expires in 60 secs!\n` +
-      `┃  Enter it FAST!\n` +
+      `┃  ⏰ Enter it FAST!\n` +
       `┃\n` +
       `╰══════════════════════⊷`,
       { parse_mode: 'HTML' }
@@ -333,9 +333,7 @@ bot.onText(/\/delpair (.+)/, async (msg, match) => {
 
   if (!user?.verified) return bot.sendMessage(userId, `❌ Please /start and verify first!`);
   if (!user?.sessions?.includes(number)) {
-    return bot.sendMessage(userId,
-      `❌ +${number} not found in your sessions!\nUse /mysessions to check.`
-    );
+    return bot.sendMessage(userId, `❌ +${number} not found!\nUse /mysessions to check.`);
   }
 
   await bot.sendMessage(userId, `⏳ Deleting session for +${number}...`);
@@ -417,16 +415,16 @@ bot.onText(/\/help/, (msg) => {
 // ── ERROR HANDLER ──
 bot.on('polling_error', (err) => {
   if (!err.message.includes('query is too old') &&
-      !err.message.includes('ETELEGRAM') &&
-      !err.message.includes('ECONNRESET')) {
+    !err.message.includes('ETELEGRAM') &&
+    !err.message.includes('ECONNRESET')) {
     console.error('Polling error:', err.message);
   }
 });
 
 process.on('unhandledRejection', (err) => {
-  console.error('Unhandled rejection:', err.message);
+  console.error('Unhandled rejection:', err?.message);
 });
 
 console.log(`✅ ${BOT_NAME} Telegram bot started!`);
-console.log(`📢 Channel: ${TG_CHANNEL}`);
-console.log(`👥 Group: ${TG_GROUP}`);
+console.log(` Channel: ${TG_CHANNEL}`);
+console.log(` Group: ${TG_GROUP}`);
