@@ -63,11 +63,13 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
-    browser: ['Ubuntu', 'Chrome', '120.0.0'],
+    // Use Baileys' built-in Browsers helper for pairing code compatibility
+    browser: ['TUNZY-MD', 'Safari', '3.0'],
     markOnlineOnConnect: false,
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: 60000,
     keepAliveIntervalMs: 10000,
+    generateHighQualityLinkPreview: true,
   });
 
   // Store session reference immediately
@@ -158,7 +160,7 @@ async function startWhatsAppSession(number, telegramUserId, tgBot) {
         console.error(`Pairing error: ${err.message}`);
         reject(new Error('Could not get pairing code: ' + err.message));
       }
-    }, 1500);
+    }, 3000); // 3s delay gives the WS handshake enough time on slower servers
   });
 
   return pairingCode;
