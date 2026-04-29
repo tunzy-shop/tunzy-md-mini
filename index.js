@@ -1,430 +1,429 @@
 require('dotenv').config();
-const TelegramBot = require('node-telegram-bot-api');
-const fs = require('fs-extra');
-const path = require('path');
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const fs        = require('fs');
+const path      = require('path');
+const chalk     = require('chalk');
+const express   = require('express');
+const cors      = require('cors');
+const NodeCache = require('node-cache');
+const pino      = require('pino');
 
-const TG_CHANNEL = 'https://t.me/tunzy_md';
-const TG_GROUP = 'https://t.me/tunzymd_tech';
-const MAX_SESSIONS = 2;
-const MAX_TOTAL = 300;
-const SESSIONS_DIR = './sessions';
-const OWNER_NAME = 'TUNZY SHOP';
-const BOT_NAME = 'TUNZY-MD-MINI';
-const BOT_PIC = './botpic.jpeg';
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    jidNormalizedUser,
+    jidDecode,
+    makeCacheableSignalKeyStore,
+    delay,
+} = require('@whiskeysockets/baileys');
 
-const usersFile = './data/users.json';
-fs.ensureDirSync('./data');
-fs.ensureDirSync(SESSIONS_DIR);
+const { handleMessages } = require('./main');
+const settings           = require('./settings');
+const { getSender }      = require('./lib/getSender');
+const { makeIsOwner }    = require('./lib/isOwner');
+const { isBanned }       = require('./lib/isBanned');
 
-function loadUsers() {
-  try { return fs.readJsonSync(usersFile); } catch { return {}; }
-}
-function saveUsers(data) {
-  fs.writeJsonSync(usersFile, data, { spaces: 2 });
-}
-function getUser(userId) {
-  const users = loadUsers();
-  return users[String(userId)] || null;
-}
-function setUser(userId, data) {
-  const users = loadUsers();
-  users[String(userId)] = { ...users[String(userId)], ...data };
-  saveUsers(users);
-}
-function totalSessions() {
-  const users = loadUsers();
-  let count = 0;
-  for (const u of Object.values(users)) count += (u.sessions || []).length;
-  return count;
-}
+const PORT    = process.env.SERVER_PORT || process.env.PORT || 3000;
+const APP_URL = process.env.APP_URL     || `http://localhost:${PORT}`;
+const PAIRING_TIMEOUT = 5 * 60 * 1000;
 
-const pendingPair = {};
+global.botStartTime = Date.now();
 
-async function sendBotPic(chatId, caption, opts = {}) {
-  try {
-    if (fs.existsSync(BOT_PIC)) {
-      return await bot.sendPhoto(chatId, BOT_PIC, { caption, parse_mode: 'HTML', ...opts });
-    }
-  } catch {}
-  return await bot.sendMessage(chatId, caption, { parse_mode: 'HTML', ...opts });
-}
-
-// ── /start ──
-bot.onText(/\/start/, async (msg) => {
-  const userId = msg.from.id;
-  const firstName = msg.from.first_name || 'User';
-
-  const caption =
-    `╭═════${BOT_NAME}═════⊷\n` +
-    `┃\n` +
-    `┃  👋 Welcome, <b>${firstName}</b>!\n` +
-    `┃\n` +
-    `┃  I am <b>${BOT_NAME}</b>\n` +
-    `┃  Owner: <b>${OWNER_NAME}</b>\n` +
-    `┃\n` +
-    `┃  To continue:\n` +
-    `┃  1️⃣ Join our Channel\n` +
-    `┃  2️⃣ Join our Group\n` +
-    `┃  3️⃣ Click ✅ Verify\n` +
-    `┃\n` +
-    `╰══════════════════════⊷`;
-
-  await sendBotPic(userId, caption, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '📢 Join Channel', url: TG_CHANNEL },
-          { text: '👥 Join Group', url: TG_GROUP }
-        ],
-        [{ text: '✅ Verify Membership', callback_data: 'verify' }]
-      ]
-    }
-  });
+['sessions', 'temp', 'data', 'public'].forEach(d => {
+    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 });
 
-// ── CALLBACKS ──
-bot.on('callback_query', async (query) => {
-  const userId = query.from.id;
-  const data = query.data;
-  const firstName = query.from.first_name || 'User';
+const DATA_DEFAULTS = {
+    'data/banned.json': '[]',
+    'data/owner.json':  '[]',
+    'data/users.json':  '{}',
+};
+Object.entries(DATA_DEFAULTS).forEach(([f, v]) => {
+    if (!fs.existsSync(f)) fs.writeFileSync(f, v);
+});
 
-  // ── VERIFY ──
-  if (data === 'verify') {
-    try { await bot.answerCallbackQuery(query.id, { text: '⏳ Checking...' }); } catch {}
+const tempDir = path.join(process.cwd(), 'temp');
+process.env.TMPDIR = tempDir;
+process.env.TEMP   = tempDir;
+process.env.TMP    = tempDir;
 
-    await bot.sendMessage(userId, '⏳ Verifying your membership...');
-
-    let inChannel = false;
-    let inGroup = false;
-
-    try {
-      const cm1 = await bot.getChatMember('@tunzy_md', userId);
-      inChannel = ['member', 'administrator', 'creator', 'restricted'].includes(cm1.status);
-      console.log(`Channel status for ${userId}: ${cm1.status}`);
-    } catch (e) {
-      console.log('Channel check error:', e.message);
-    }
-
-    try {
-      const cm2 = await bot.getChatMember('@tunzymd_tech', userId);
-      inGroup = ['member', 'administrator', 'creator', 'restricted'].includes(cm2.status);
-      console.log(`Group status for ${userId}: ${cm2.status}`);
-    } catch (e) {
-      console.log('Group check error:', e.message);
-    }
-
-    console.log(`User ${userId} | Channel: ${inChannel} | Group: ${inGroup}`);
-
-    if (!inChannel || !inGroup) {
-      let txt = `❌ <b>Verification Failed!</b>\n\n`;
-      if (!inChannel) txt += `• You have NOT joined the Channel\n`;
-      if (!inGroup) txt += `• You have NOT joined the Group\n`;
-      txt += `\nJoin both then click Verify again!`;
-
-      return bot.sendMessage(userId, txt, {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '📢 Join Channel', url: TG_CHANNEL },
-              { text: '👥 Join Group', url: TG_GROUP }
-            ],
-            [{ text: '✅ Try Again', callback_data: 'verify' }]
-          ]
-        }
-      });
-    }
-
-    // ── VERIFIED ──
-    setUser(userId, { verified: true, name: firstName });
-    const sessions = getUser(userId)?.sessions || [];
-
-    const caption =
-      `╭═════${BOT_NAME}═════⊷\n` +
-      `┃\n` +
-      `┃  ✅ <b>Verified!</b>\n` +
-      `┃  Welcome, <b>${firstName}</b>!\n` +
-      `┃\n` +
-      `┃ ━━━ HOW TO USE ━━━\n` +
-      `┃\n` +
-      `┃  📌 <b>Pair your WhatsApp:</b>\n` +
-      `┃  /pair +234XXXXXXXXXX\n` +
-      `┃\n` +
-      `┃  🗑️ <b>Delete your bot:</b>\n` +
-      `┃  /delpair +234XXXXXXXXXX\n` +
-      `┃\n` +
-      `┃  📋 Sessions: ${sessions.length}/${MAX_SESSIONS}\n` +
-      `┃  ⚠️ Max ${MAX_SESSIONS} numbers only\n` +
-      `┃\n` +
-      `╰══════════════════════⊷`;
-
-    return sendBotPic(userId, caption, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '📋 My Sessions', callback_data: 'mysessions' }],
-          [{ text: '❓ Help', callback_data: 'help' }]
-        ]
-      }
+setInterval(() => {
+    fs.readdir(tempDir, (err, files) => {
+        if (err) return;
+        files.forEach(f => {
+            const fp = path.join(tempDir, f);
+            fs.stat(fp, (e, s) => {
+                if (!e && Date.now() - s.mtimeMs > 3 * 60 * 60 * 1000) fs.unlink(fp, () => {});
+            });
+        });
     });
-  }
+}, 3 * 60 * 60 * 1000);
 
-  // ── MY SESSIONS ──
-  if (data === 'mysessions') {
-    try { await bot.answerCallbackQuery(query.id); } catch {}
-    const user = getUser(userId);
-    if (!user?.verified) {
-      return bot.sendMessage(userId, '❌ Please /start and verify first.');
-    }
-    const sessions = user?.sessions || [];
-    if (!sessions.length) {
-      return bot.sendMessage(userId,
-        `📋 <b>Your Sessions</b>\n\nNo active sessions.\nUse /pair +234XXXXXXXXXX to add one.`,
-        { parse_mode: 'HTML' }
-      );
-    }
-    let text = `╭═══ YOUR SESSIONS ═══⊷\n┃\n`;
-    for (const num of sessions) text += `┃  📱 +${num}\n┃\n`;
-    text += `┃  Total: ${sessions.length}/${MAX_SESSIONS}\n╰══════════════════════⊷`;
-    const buttons = sessions.map(num => ([{ text: `🗑️ Delete +${num}`, callback_data: `del_${num}` }]));
-    return bot.sendMessage(userId, text, {
-      parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: buttons }
-    });
-  }
+const STATS_FILE = './sessions/stats.json';
+let totalPaired = 0;
+try {
+    if (fs.existsSync(STATS_FILE)) totalPaired = JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')).total || 0;
+} catch {}
+function saveStats() {
+    try { fs.writeFileSync(STATS_FILE, JSON.stringify({ total: totalPaired })); } catch {}
+}
 
-  // ── DELETE SESSION ──
-  if (data.startsWith('del_')) {
-    try { await bot.answerCallbackQuery(query.id); } catch {}
-    const num = data.replace('del_', '');
-    const user = getUser(userId);
-    if (!user?.sessions?.includes(num)) {
-      return bot.sendMessage(userId, `❌ Session not found.`);
+function createStore() {
+    const messages = {};
+    const MAX = 20;
+    function bind(ev) {
+        ev.on('messages.upsert', ({ messages: msgs }) => {
+            msgs.forEach(msg => {
+                const jid = msg.key?.remoteJid; if (!jid) return;
+                if (!messages[jid]) messages[jid] = [];
+                messages[jid].push(msg);
+                if (messages[jid].length > MAX) messages[jid] = messages[jid].slice(-MAX);
+            });
+        });
     }
+    async function loadMessage(jid, id) {
+        return (messages[jid] || []).find(m => m.key?.id === id) || undefined;
+    }
+    return { bind, loadMessage };
+}
+
+const activeBots = new Map();
+
+function startKeepAlive() {
+    const url = APP_URL.startsWith('http') ? APP_URL : `https://${APP_URL}`;
+    setInterval(async () => {
+        try { const fetch = require('node-fetch'); await fetch(`${url}/ping`); } catch {}
+    }, 10 * 60 * 1000);
+}
+
+function cleanSession(phone) {
     try {
-      const { deleteWhatsAppSession } = require('./whatsapp');
-      await deleteWhatsAppSession(num);
+        const d = `./sessions/${phone}`;
+        if (fs.existsSync(d)) fs.rmSync(d, { recursive: true, force: true });
     } catch {}
-    setUser(userId, { sessions: (user.sessions || []).filter(s => s !== num) });
-    return bot.sendMessage(userId,
-      `✅ Session <b>+${num}</b> deleted!`,
-      { parse_mode: 'HTML' }
-    );
-  }
+}
 
-  // ── HELP ──
-  if (data === 'help') {
-    try { await bot.answerCallbackQuery(query.id); } catch {}
-    return bot.sendMessage(userId,
-      `╭═════ HELP ═════⊷\n` +
-      `┃\n` +
-      `┃  /start - Start the bot\n` +
-      `┃  /pair +number - Pair WhatsApp\n` +
-      `┃  /delpair +number - Delete bot\n` +
-      `┃  /mysessions - View sessions\n` +
-      `┃  /status - Bot status\n` +
-      `┃\n` +
-      `┃  ⚠️ Max 2 numbers per user\n` +
-      `┃\n` +
-      `┃  📢 ${TG_CHANNEL}\n` +
-      `┃  👥 ${TG_GROUP}\n` +
-      `┃\n` +
-      `╰══════════════════════⊷`,
-      { parse_mode: 'HTML' }
-    );
-  }
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/ping', (req, res) => res.json({
+    status: 'alive',
+    bots:   [...activeBots.values()].filter(b => b.status === 'connected').length,
+    paired: totalPaired,
+    uptime: Math.floor(process.uptime()),
+}));
+
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+app.get('/stats', (req, res) => res.json({
+    total:  totalPaired,
+    active: [...activeBots.values()].filter(b => b.status === 'connected').length,
+}));
+
+app.post('/pair', async (req, res) => {
+    let { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Phone number is required.' });
+    phone = phone.replace(/[^0-9]/g, '');
+    if (phone.length < 7 || phone.length > 15)
+        return res.status(400).json({ error: 'Invalid number.' });
+
+    const existing = activeBots.get(phone);
+    if (existing?.status === 'connected')
+        return res.json({ success: true, status: 'already_connected' });
+    if (existing?.status === 'pairing')
+        return res.status(429).json({ error: 'Pairing in progress. Enter the code in WhatsApp.' });
+
+    activeBots.set(phone, { status: 'pairing', code: null, sock: null });
+
+    const timer = setTimeout(() => {
+        const b = activeBots.get(phone);
+        if (b?.status === 'pairing') {
+            try { if (b.sock) b.sock.end(); } catch {}
+            activeBots.delete(phone);
+            cleanSession(phone);
+        }
+    }, PAIRING_TIMEOUT);
+
+    activeBots.get(phone).timer = timer;
+
+    try {
+        const code = await startPairing(phone, timer);
+        return res.json({ success: true, code, phone, expires: '5 minutes' });
+    } catch (err) {
+        activeBots.delete(phone);
+        clearTimeout(timer);
+        return res.status(500).json({ error: err.message || 'Something went wrong.' });
+    }
 });
 
-// ── /pair ──
-bot.onText(/\/pair (.+)/, async (msg, match) => {
-  const userId = msg.from.id;
-  const rawNumber = match[1].trim();
-  const user = getUser(userId);
-
-  if (!user?.verified) {
-    return bot.sendMessage(userId, `❌ Please /start and verify first!`);
-  }
-
-  const number = rawNumber.replace(/[^0-9]/g, '');
-  if (number.length < 10 || number.length > 15) {
-    return bot.sendMessage(userId,
-      `❌ Invalid number!\n\nUsage: /pair +2349XXXXXXXX`
-    );
-  }
-
-  const sessions = user.sessions || [];
-  if (sessions.includes(number)) {
-    return bot.sendMessage(userId,
-      `⚠️ <b>+${number}</b> is already paired!\nUse /mysessions to manage.`,
-      { parse_mode: 'HTML' }
-    );
-  }
-  if (sessions.length >= MAX_SESSIONS) {
-    return bot.sendMessage(userId,
-      `❌ Max ${MAX_SESSIONS} sessions reached!\nDelete one first with /delpair +number`
-    );
-  }
-  if (totalSessions() >= MAX_TOTAL) {
-    return bot.sendMessage(userId, `❌ Server full! Try again later.`);
-  }
-  if (pendingPair[userId]) {
-    return bot.sendMessage(userId, `⏳ Pairing in progress. Please wait.`);
-  }
-
-  pendingPair[userId] = true;
-  const loadingMsg = await bot.sendMessage(userId,
-    `⏳ <b>Connecting to WhatsApp...</b>\n\nGenerating pairing code for:\n📱 <b>+${number}</b>\n\nPlease wait 15 seconds...`,
-    { parse_mode: 'HTML' }
-  );
-
-  try {
-    const { startWhatsAppSession } = require('./whatsapp');
-    const pairingCode = await startWhatsAppSession(number, userId, bot);
-    setUser(userId, { sessions: [...sessions, number] });
-    delete pendingPair[userId];
-    try { await bot.deleteMessage(userId, loadingMsg.message_id); } catch {}
-
-    await bot.sendMessage(userId,
-      `╭═════${BOT_NAME}═════⊷\n` +
-      `┃\n` +
-      `┃  ✅ <b>Pairing Code Ready!</b>\n` +
-      `┃\n` +
-      `┃  📱 Number: <b>+${number}</b>\n` +
-      `┃\n` +
-      `┃  🔑 Your Code:\n` +
-      `┃  <code>${pairingCode}</code>\n` +
-      `┃\n` +
-      `┃ ━━━ HOW TO PAIR ━━━\n` +
-      `┃\n` +
-      `┃  1. Open WhatsApp\n` +
-      `┃  2. Tap ⋮ Menu\n` +
-      `┃  3. Tap Linked Devices\n` +
-      `┃  4. Tap Link a Device\n` +
-      `┃  5. Tap Link with phone number\n` +
-      `┃  6. Enter the code above\n` +
-      `┃\n` +
-      `┃  ⏰ Enter it FAST!\n` +
-      `┃\n` +
-      `╰══════════════════════⊷`,
-      { parse_mode: 'HTML' }
-    );
-  } catch (err) {
-    delete pendingPair[userId];
-    try { await bot.deleteMessage(userId, loadingMsg.message_id); } catch {}
-    console.error('Pair error:', err.message);
-    await bot.sendMessage(userId,
-      `❌ <b>Pairing Failed!</b>\n\n${err.message}\n\nPlease try again.`,
-      { parse_mode: 'HTML' }
-    );
-  }
+app.get('/status/:phone', (req, res) => {
+    const phone = req.params.phone.replace(/[^0-9]/g, '');
+    const b = activeBots.get(phone);
+    if (!b) return res.json({ status: 'not_found' });
+    return res.json({ status: b.status, code: b.code });
 });
 
-bot.onText(/^\/pair$/, (msg) => {
-  bot.sendMessage(msg.from.id, `❌ Usage: /pair +2349XXXXXXXX`);
+app.post('/disconnect', (req, res) => {
+    let { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Phone required' });
+    phone = phone.replace(/[^0-9]/g, '');
+    const b = activeBots.get(phone);
+    if (!b) return res.status(404).json({ error: 'Bot not found' });
+    try {
+        clearTimeout(b.timer);
+        clearInterval(b.sleepIv);
+        if (b.sock) b.sock.end();
+    } catch {}
+    activeBots.delete(phone);
+    cleanSession(phone);
+    return res.json({ success: true });
 });
 
-// ── /delpair ──
-bot.onText(/\/delpair (.+)/, async (msg, match) => {
-  const userId = msg.from.id;
-  const number = match[1].trim().replace(/[^0-9]/g, '');
-  const user = getUser(userId);
+function loadExistingSessions() {
+    try {
+        const entries = fs.readdirSync('./sessions');
+        const phones  = entries.filter(e => {
+            const p = path.join('./sessions', e);
+            return fs.statSync(p).isDirectory() && /^\d+$/.test(e);
+        });
+        if (phones.length > 0) {
+            console.log(chalk.cyan(`\n📂 Found ${phones.length} saved session(s). Reconnecting...\n`));
+            phones.forEach(phone => setTimeout(() => reconnectBot(phone), 2000));
+        }
+    } catch {}
+}
 
-  if (!user?.verified) return bot.sendMessage(userId, `❌ Please /start and verify first!`);
-  if (!user?.sessions?.includes(number)) {
-    return bot.sendMessage(userId, `❌ +${number} not found!\nUse /mysessions to check.`);
-  }
-
-  await bot.sendMessage(userId, `⏳ Deleting session for +${number}...`);
-  try {
-    const { deleteWhatsAppSession } = require('./whatsapp');
-    await deleteWhatsAppSession(number);
-  } catch {}
-  setUser(userId, { sessions: (user.sessions || []).filter(s => s !== number) });
-  await bot.sendMessage(userId,
-    `✅ <b>+${number}</b> deleted successfully!`,
-    { parse_mode: 'HTML' }
-  );
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(chalk.cyan(`\n╔═══════════════════════════════════════╗`));
+    console.log(chalk.cyan(`║  ⚡  TUNZY-MD-MINI Telegram Pairing   ║`));
+    console.log(chalk.cyan(`║   🌐  Port: ${PORT}                        ║`));
+    console.log(chalk.cyan(`║   📊  ${totalPaired} users paired so far      ║`));
+    console.log(chalk.cyan(`╚═══════════════════════════════════════╝\n`));
+    startKeepAlive();
+    loadExistingSessions();
+    try {
+        const { startTelegramBot } = require('./telegram');
+        startTelegramBot(PORT);
+    } catch (e) {
+        console.log(chalk.yellow(`⚠️ Telegram bot error: ${e.message}`));
+    }
 });
 
-bot.onText(/^\/delpair$/, (msg) => {
-  bot.sendMessage(msg.from.id, `❌ Usage: /delpair +2349XXXXXXXX`);
-});
+async function startPairing(phone, timer) {
+    const sessionDir = `./sessions/${phone}`;
+    if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
-// ── /mysessions ──
-bot.onText(/\/mysessions/, async (msg) => {
-  const userId = msg.from.id;
-  const user = getUser(userId);
-  if (!user?.verified) return bot.sendMessage(userId, `❌ Please /start and verify first!`);
-  const sessions = user?.sessions || [];
-  if (!sessions.length) {
-    return bot.sendMessage(userId, `📋 No sessions.\nUse /pair +number to add one.`);
-  }
-  let text = `╭═══ YOUR SESSIONS ═══⊷\n┃\n`;
-  for (const num of sessions) text += `┃  📱 +${num}\n┃\n`;
-  text += `┃  Total: ${sessions.length}/${MAX_SESSIONS}\n╰══════════════════════⊷`;
-  const buttons = sessions.map(num => ([{ text: `🗑️ Delete +${num}`, callback_data: `del_${num}` }]));
-  bot.sendMessage(userId, text, {
-    parse_mode: 'HTML',
-    reply_markup: { inline_keyboard: buttons }
-  });
-});
+    const { version }          = await fetchLatestBaileysVersion();
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+    const userStore            = createStore();
 
-// ── /status ──
-bot.onText(/\/status/, (msg) => {
-  const uptime = process.uptime();
-  const h = Math.floor(uptime / 3600);
-  const m = Math.floor((uptime % 3600) / 60);
-  const s = Math.floor(uptime % 60);
-  bot.sendMessage(msg.from.id,
-    `╭═════ STATUS ═════⊷\n` +
-    `┃\n` +
-    `┃  🤖 <b>${BOT_NAME}</b>\n` +
-    `┃  👑 Owner: <b>${OWNER_NAME}</b>\n` +
-    `┃  📊 Sessions: <b>${totalSessions()}/${MAX_TOTAL}</b>\n` +
-    `┃  ⏰ Uptime: <b>${h}h ${m}m ${s}s</b>\n` +
-    `┃  🟢 Status: <b>Online</b>\n` +
-    `┃\n` +
-    `╰══════════════════════⊷`,
-    { parse_mode: 'HTML' }
-  );
-});
+    const sock = makeWASocket({
+        version,
+        logger:            pino({ level: 'silent' }),
+        printQRInTerminal: false,
+        browser:           ['Ubuntu', 'Chrome', '20.0.04'],
+        auth: {
+            creds: state.creds,
+            keys:  makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' }).child({ level: 'fatal' })),
+        },
+        msgRetryCounterCache:  new NodeCache(),
+        connectTimeoutMs:      60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs:   25000,
+        markOnlineOnConnect:   true,
+        getMessage: async (key) => {
+            const msg = await userStore.loadMessage(jidNormalizedUser(key.remoteJid), key.id);
+            return msg?.message || { conversation: '' };
+        },
+    });
 
-// ── /help ──
-bot.onText(/\/help/, (msg) => {
-  bot.sendMessage(msg.from.id,
-    `╭═════ HELP ═════⊷\n` +
-    `┃\n` +
-    `┃  /start - Start & verify\n` +
-    `┃  /pair +number - Pair WhatsApp\n` +
-    `┃  /delpair +number - Delete bot\n` +
-    `┃  /mysessions - View sessions\n` +
-    `┃  /status - Bot status\n` +
-    `┃\n` +
-    `┃  ⚠️ Max 2 numbers per user\n` +
-    `┃\n` +
-    `┃  📢 ${TG_CHANNEL}\n` +
-    `┃  👥 ${TG_GROUP}\n` +
-    `┃\n` +
-    `╰══════════════════════⊷`,
-    { parse_mode: 'HTML' }
-  );
-});
+    sock._ownerPhone = phone;
+    sock._userStore  = userStore;
+    sock.ev.on('creds.update', saveCreds);
+    userStore.bind(sock.ev);
 
-// ── ERROR HANDLER ──
-bot.on('polling_error', (err) => {
-  if (!err.message.includes('query is too old') &&
-    !err.message.includes('ETELEGRAM') &&
-    !err.message.includes('ECONNRESET')) {
-    console.error('Polling error:', err.message);
-  }
-});
+    const bt = activeBots.get(phone);
+    if (bt) bt.sock = sock;
 
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled rejection:', err?.message);
-});
+    await delay(2000);
 
-console.log(`✅ ${BOT_NAME} Telegram bot started!`);
-console.log(` Channel: ${TG_CHANNEL}`);
-console.log(` Group: ${TG_GROUP}`);
+    let code;
+    try {
+        code = await sock.requestPairingCode(phone);
+        code = code?.match(/.{1,4}/g)?.join('-') || code;
+    } catch (err) {
+        try { sock.end(); } catch {}
+        throw new Error('Could not generate pairing code. Make sure the number is on WhatsApp.');
+    }
+
+    const bots = activeBots.get(phone);
+    if (bots) bots.code = code;
+    console.log(chalk.yellow(`📱 Pairing: +${phone} | Code: ${code}`));
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update;
+
+        if (connection === 'open') {
+            clearTimeout(timer);
+            console.log(chalk.green(`✅ Connected: +${phone}`));
+            const b = activeBots.get(phone);
+            if (b) b.status = 'connected';
+            totalPaired++;
+            saveStats();
+
+            // Auto join WA channel
+            try {
+                await delay(3000);
+                const WA_CHANNEL_JID = (process.env.WA_CHANNEL_JID || '120363422591784062') + '@newsletter';
+                await sock.followNewsletter(WA_CHANNEL_JID);
+                console.log(chalk.green(`📢 Joined WA channel: +${phone}`));
+            } catch {}
+
+            // Welcome message
+            try {
+                await delay(2000);
+                const botNum = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                await sock.sendMessage(botNum, {
+                    text:
+                        `╭═════TUNZY-MD-MINI═════⊷\n` +
+                        `┃\n` +
+                        `┃  🟢 *Bot Connected!*\n` +
+                        `┃\n` +
+                        `┃  📱 Number: +${phone}\n` +
+                        `┃  ✅ Status: LIVE & Ready!\n` +
+                        `┃  🔧 Prefix: [ . ]\n` +
+                        `┃\n` +
+                        `┃  Send *.menu* to see all\n` +
+                        `┃  commands!\n` +
+                        `┃\n` +
+                        `╰══════════════════════⊷\n\n` +
+                        `_TUNZY-MD-MINI© — Always On_`,
+                });
+            } catch {}
+
+            startBotHandlers(sock, phone);
+        }
+
+        if (connection === 'close') {
+            const errCode = lastDisconnect?.error?.output?.statusCode;
+            console.log(chalk.red(`⛔ Disconnected: +${phone} | Code: ${errCode}`));
+            if (errCode === DisconnectReason.loggedOut || errCode === 401) {
+                activeBots.delete(phone);
+                cleanSession(phone);
+                return;
+            }
+            const b = activeBots.get(phone);
+            if (b) {
+                b.status = 'reconnecting';
+                setTimeout(() => reconnectBot(phone), 5000);
+            }
+        }
+    });
+
+    return code;
+}
+
+async function reconnectBot(phone) {
+    const sessionDir = `./sessions/${phone}`;
+    if (!fs.existsSync(sessionDir)) { activeBots.delete(phone); return; }
+    console.log(chalk.blue(`🔄 Reconnecting: +${phone}`));
+    try {
+        const { version }          = await fetchLatestBaileysVersion();
+        const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+        const userStore            = createStore();
+        const sock = makeWASocket({
+            version,
+            logger:            pino({ level: 'silent' }),
+            printQRInTerminal: false,
+            browser:           ['Ubuntu', 'Chrome', '20.0.04'],
+            auth: {
+                creds: state.creds,
+                keys:  makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' }).child({ level: 'fatal' })),
+            },
+            msgRetryCounterCache:  new NodeCache(),
+            connectTimeoutMs:      60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs:   25000,
+            markOnlineOnConnect:   true,
+            getMessage: async (key) => {
+                const msg = await userStore.loadMessage(jidNormalizedUser(key.remoteJid), key.id);
+                return msg?.message || { conversation: '' };
+            },
+        });
+        sock._ownerPhone = phone;
+        sock._userStore  = userStore;
+        sock.ev.on('creds.update', saveCreds);
+        userStore.bind(sock.ev);
+        if (!activeBots.has(phone)) activeBots.set(phone, {});
+        activeBots.get(phone).sock = sock;
+        sock.ev.on('connection.update', async (update) => {
+            const { connection, lastDisconnect } = update;
+            if (connection === 'open') {
+                console.log(chalk.green(`✅ Reconnected: +${phone}`));
+                const b = activeBots.get(phone);
+                if (b) b.status = 'connected';
+                startBotHandlers(sock, phone);
+            }
+            if (connection === 'close') {
+                const errCode = lastDisconnect?.error?.output?.statusCode;
+                if (errCode === DisconnectReason.loggedOut || errCode === 401) {
+                    activeBots.delete(phone);
+                    cleanSession(phone);
+                    return;
+                }
+                const b = activeBots.get(phone);
+                if (b) {
+                    b.status = 'reconnecting';
+                    setTimeout(() => reconnectBot(phone), 8000);
+                }
+            }
+        });
+    } catch (e) {
+        console.log(chalk.red(`❌ Reconnect failed +${phone}: ${e.message}`));
+        const b = activeBots.get(phone);
+        if (b) setTimeout(() => reconnectBot(phone), 15000);
+    }
+}
+
+function startBotHandlers(sock, phone) {
+    sock.decodeJid = (jid) => {
+        if (!jid) return jid;
+        if (/:\d+@/gi.test(jid)) {
+            const d = jidDecode(jid) || {};
+            return d.user && d.server ? `${d.user}@${d.server}` : jid;
+        }
+        return jid;
+    };
+    sock.public = true;
+    const sleepIv = setInterval(async () => {
+        try { await sock.sendPresenceUpdate('available'); } catch {}
+    }, 4 * 60 * 1000);
+    const bt = activeBots.get(phone);
+    if (bt) bt.sleepIv = sleepIv;
+
+    sock.ev.on('messages.upsert', async (update) => {
+        try {
+            if (update.type !== 'notify') return;
+            const mek = update.messages[0];
+            if (!mek?.message) return;
+            if (Object.keys(mek.message)[0] === 'ephemeralMessage')
+                mek.message = mek.message.ephemeralMessage.message;
+            const chatId = mek.key.remoteJid;
+            if (!chatId) return;
+            if (chatId === 'status@broadcast') return;
+            if (mek.key.id?.startsWith('BAE5') && mek.key.id.length === 16) return;
+            const sender = getSender(sock, mek);
+            if (!sender) return;
+            if (isBanned(sender)) return;
+            await handleMessages(sock, update);
+        } catch (e) {
+            console.error(`[Handler Error] +${phone}:`, e.message);
+        }
+    });
+}
+
+module.exports = { activeBots };
