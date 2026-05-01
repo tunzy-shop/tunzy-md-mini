@@ -1,14 +1,31 @@
 module.exports = {
-    execute: async ({ sock, msg, from, args, senderIsOwner, PREFIX }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        if (!senderIsOwner) return reply(`〆 _This command is for the owner only._`);
-        const text = args.join(' ');
-        if (!text) return reply(`〆 _Usage : ${PREFIX}broadcast <message>_`);
-        const chats = await sock.groupFetchAllParticipating();
-        let sent = 0;
-        for (const chat of Object.values(chats)) {
-            try { await sock.sendMessage(chat.id, { text: `*Broadcast :*\n\n${text}` }); sent++; } catch {}
+    command: ['broadcast', 'bc', 'announce'],
+    execute: async ({ sock, msg, from, args, reply, isOwner }) => {
+        try {
+            if (!isOwner) return reply('_〆 Only bot owner can use this command_');
+            
+            const message = args.join(' ');
+            if (!message) return reply('_〆 Please provide a message to broadcast_\n✓ Example: !broadcast Hello everyone!');
+            
+            await reply(`✓ Broadcasting to all chats...\n_〆 Message: ${message}_`);
+            
+            const chats = await sock.groupFetchAllParticipating();
+            let sent = 0;
+            
+            for (let id in chats) {
+                try {
+                    await sock.sendMessage(id, { text: `📢 *ANNOUNCEMENT*\n\n${message}` });
+                    sent++;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (err) {
+                    console.error(`Failed to send to ${id}:`, err);
+                }
+            }
+            
+            reply(`✓ Broadcast completed!\n_〆 Sent to ${sent} chats_`);
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to broadcast_');
         }
-        await reply(`✓ *Broadcast* sent to \`${sent}\` groups.`);
     }
 };
