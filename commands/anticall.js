@@ -1,7 +1,19 @@
 module.exports = {
-    execute: async ({ sock, msg, from, senderIsOwner }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        if (!senderIsOwner) return reply(`〆 _This command is for the owner only._`);
-        await reply(`✓ *Anti-Call* toggled!`);
+    command: ['anti-call', 'anticall'],
+    execute: async ({ sock, msg, from, args, reply, isGroup }) => {
+        try {
+            if (isGroup) return reply('_〆 This command works in private chat only_');
+            
+            const setting = args[0]?.toLowerCase();
+            if (!setting || (setting !== 'on' && setting !== 'off')) {
+                return reply('_〆 Usage: !anti-call on/off_\n✓ Current: ' + (global.antiCall ? 'ON' : 'OFF'));
+            }
+            
+            global.antiCall = setting === 'on';
+            reply(`✓ Anti-call ${setting === 'on' ? 'enabled' : 'disabled'}!\n_〆 Bot will ${setting === 'on' ? 'reject' : 'accept'} calls_`);
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to set anti-call_');
+        }
     }
 };
