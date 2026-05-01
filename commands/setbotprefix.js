@@ -1,9 +1,17 @@
 module.exports = {
-    execute: async ({ sock, msg, from, args, senderIsOwner, PREFIX }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        if (!senderIsOwner) return reply(`〆 _This command is for the owner only._`);
-        const pfx = args[0];
-        if (!pfx) return reply(`〆 _Usage : ${PREFIX}setbotprefix <prefix>_`);
-        await reply(`✓ *Prefix* set to : \`${pfx}\`\n✓ _Restart to apply._`);
+    command: ['setbotprefix', 'setprefix'],
+    execute: async ({ sock, msg, from, args, reply, isOwner }) => {
+        try {
+            if (!isOwner) return reply('_〆 Only bot owner can use this command_');
+            
+            const newPrefix = args[0];
+            if (!newPrefix) return reply('_〆 Please provide a new prefix_\n✓ Example: !setbotprefix $');
+            
+            global.PREFIX = newPrefix;
+            reply(`✓ Bot prefix changed to: ${newPrefix}`);
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to set prefix_');
+        }
     }
 };
