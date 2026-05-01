@@ -1,9 +1,22 @@
 module.exports = {
-    execute: async ({ sock, msg, from, args, senderIsOwner, PREFIX }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        if (!senderIsOwner) return reply(`〆 _This command is for the owner only._`);
-        const num = args[0]?.replace(/[^0-9]/g, '');
-        if (!num) return reply(`〆 _Usage : ${PREFIX}sudo <number>_`);
-        await reply(`✓ *+${num}* added as sudo.`);
+    command: ['sudo', 'addowner'],
+    execute: async ({ sock, msg, from, args, reply, isOwner }) => {
+        try {
+            if (!isOwner) return reply('_〆 Only bot owner can use this command_');
+            
+            const mention = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+            if (!mention) return reply('_〆 Mention a user to add as sudo owner_');
+            
+            global.sudoUsers = global.sudoUsers || [];
+            if (!global.sudoUsers.includes(mention)) {
+                global.sudoUsers.push(mention);
+                reply(`✓ @${mention.split('@')[0]} added as sudo owner!`, { mentions: [mention] });
+            } else {
+                reply('_〆 User is already a sudo owner_');
+            }
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to add sudo user_');
+        }
     }
 };
