@@ -1,13 +1,23 @@
-const axios = require('axios');
 module.exports = {
-    execute: async ({ sock, msg, from, args, PREFIX }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        const q = args.join(' ');
-        if (!q) return reply(`〆 _Usage : ${PREFIX}ai <question>_`);
-        await reply('`thinking....`');
+    command: ['ai', 'chatgpt', 'bot'],
+    execute: async ({ sock, msg, from, args, reply, sender }) => {
         try {
-            const res = await axios.get(`https://api.dreaded.site/api/chatgpt?text=${encodeURIComponent(q)}`, { timeout: 20000 });
-            await reply(`✓ *Question :* ${q}\n\n✓ *Answer :*\n${res.data?.result || 'No response.'}`);
-        } catch { await reply(`〆 _AI is unavailable. Try again later._`); }
+            const query = args.join(' ');
+            if (!query) return reply('_〆 Please provide a message_\n✓ Example: !ai What is JavaScript?');
+            
+            await reply('🤖 *Thinking...*');
+            
+            const api = await fetch(`https://api.siputzx.my.id/api/ai/gpt?query=${encodeURIComponent(query)}`);
+            const data = await api.json();
+            
+            if (!data.status || !data.data) {
+                return reply('_〆 AI service is busy. Please try again_');
+            }
+            
+            reply(`✓ *AI Response:*\n\n${data.data.result || data.data.response || data.data.message}`);
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to get AI response_');
+        }
     }
 };
