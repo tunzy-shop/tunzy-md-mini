@@ -1,0 +1,14 @@
+module.exports = {
+    execute: async ({ sock, msg, from }) => {
+        const pingMsg = await sock.sendMessage(from, { text: '`pinging....`' }, { quoted: msg });
+        const start = Date.now();
+        const ms = Date.now() - start;
+        await sock.sendMessage(from, {
+            text:
+                `✓ \`Ping : ${ms}ms\`\n` +
+                `✓ \`Speed : ${ms < 100 ? 'Fast' : ms < 300 ? 'Normal' : 'Slow'}\`\n` +
+                `✓ \`Status : Online\``,
+            edit: pingMsg.key
+        });
+    }
+};
