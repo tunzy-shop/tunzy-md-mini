@@ -1,7 +1,21 @@
 module.exports = {
-    execute: async ({ sock, msg, from, senderIsOwner }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        if (!senderIsOwner) return reply(`〆 _This command is for the owner only._`);
-        await reply(`〆 _Set bot picture coming soon!_`);
+    command: ['setbotpic', 'setbotpp'],
+    execute: async ({ sock, msg, from, reply, isOwner }) => {
+        try {
+            if (!isOwner) return reply('_〆 Only bot owner can use this command_');
+            
+            const media = msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
+            
+            if (!media) {
+                return reply('_〆 Please send an image with the command or quote an image_\n✓ Example: Send image with caption: !setbotpic');
+            }
+            
+            const buffer = await sock.downloadMedia(media);
+            await sock.updateProfilePicture(sock.user.id, buffer);
+            reply('✓ Bot profile picture updated successfully!');
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to update bot picture_');
+        }
     }
 };
