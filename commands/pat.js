@@ -1,0 +1,1 @@
+module.exports = { execute: async (ctx) => require('./_anime').execute(ctx, 'pat') };
