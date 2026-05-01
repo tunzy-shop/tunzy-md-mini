@@ -1,12 +1,21 @@
-const { isAdmin } = require('../lib/isAdmin');
 module.exports = {
-    execute: async ({ sock, msg, from, sender, isGroup, senderIsOwner }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        const senderIsAdmin = isGroup ? await isAdmin(sock, from, sender) : false;
-        if (!senderIsAdmin && !senderIsOwner) return reply(`〆 _You must be an admin to delete messages._`);
-        const key         = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
-        const participant = msg.message?.extendedTextMessage?.contextInfo?.participant;
-        if (!key) return reply(`〆 _Reply to a message to delete it._`);
-        await sock.sendMessage(from, { delete: { remoteJid: from, fromMe: false, id: key, participant } });
+    command: ['del', 'delete'],
+    execute: async ({ sock, msg, from, reply, isAdmin, isOwner }) => {
+        try {
+            const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+            if (!quotedMsg) return reply('_〆 Quote a message to delete_');
+            
+            const key = {
+                remoteJid: from,
+                id: msg.message.extendedTextMessage.contextInfo.stanzaId,
+                participant: msg.message.extendedTextMessage.contextInfo.participant
+            };
+            
+            await sock.sendMessage(from, { delete: key });
+            reply('✓ Message deleted!');
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to delete message_');
+        }
     }
 };
