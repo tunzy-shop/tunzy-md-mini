@@ -1,9 +1,17 @@
 module.exports = {
-    execute: async ({ sock, msg, from, args, senderIsOwner, PREFIX }) => {
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        if (!senderIsOwner) return reply(`〆 _This command is for the owner only._`);
-        const name = args.join(' ');
-        if (!name) return reply(`〆 _Usage : ${PREFIX}setbotname <name>_`);
-        await reply(`✓ *Bot name* set to : \`${name}\`\n✓ _Restart to apply._`);
+    command: ['setbotname', 'botname'],
+    execute: async ({ sock, msg, from, args, reply, isOwner }) => {
+        try {
+            if (!isOwner) return reply('_〆 Only bot owner can use this command_');
+            
+            const newName = args.join(' ');
+            if (!newName) return reply('_〆 Please provide a new bot name_\n✓ Example: !setbotname MyAwesomeBot');
+            
+            await sock.updateProfileName(newName);
+            reply(`✓ Bot name changed to: ${newName}`);
+        } catch (error) {
+            console.error(error);
+            reply('_〆 Error: Failed to update bot name_');
+        }
     }
 };
